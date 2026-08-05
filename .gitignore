@@ -1,0 +1,6 @@
+# Environmental variables
+.env
+
+# Documents 
+docs/*
+docs/obsidian_vault
