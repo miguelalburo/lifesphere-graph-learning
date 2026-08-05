@@ -1,6 +1,28 @@
 # Environmental variables
 .env
 
-# Documents 
+# Python virtual environment
+.venv
+
+# Documents
 docs/*
 docs/obsidian_vault
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Working data — LifeSphere data is not redistributed from this repo
+data/*
+!data/README.md
+!data/*/
+data/*/*
+!data/*/.gitkeep
+
+# Experiment outputs — promote specific files with `git add -f`
+results/*
+!results/README.md
+!results/*/
+results/*/*
+!results/*/.gitkeep
