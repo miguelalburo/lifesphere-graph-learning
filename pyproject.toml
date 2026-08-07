@@ -1,0 +1,29 @@
+# Tool configuration only. Dependencies live in requirements.txt (issue #5);
+# this project is not packaged or distributed.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["gl_lifesphere", "tests"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+# The modelling stack ships incomplete or absent stubs. Untyped imports are
+# allowed through so that project code still gets checked; this is deliberately
+# narrow rather than a global ignore_missing_imports.
+[[tool.mypy.overrides]]
+module = [
+    "lifelines.*",
+    "sksurv.*",
+    "torchsurv.*",
+    "torch_geometric.*",
+    "scipy.*",
+    "sklearn.*",
+]
+ignore_missing_imports = true

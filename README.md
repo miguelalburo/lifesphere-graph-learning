@@ -33,11 +33,20 @@ Requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/) (or plain `venv`/`p
 
 ```bash
 uv venv .venv
-uv pip install -r requirements.txt --python .venv/bin/python
+uv pip install -r requirements.txt --python .venv/bin/python --torch-backend=cpu
 
 # optional: register a Jupyter kernel for this venv
 .venv/bin/python -m ipykernel install --user --name gl-lifesphere --display-name "gl-lifesphere (.venv)"
 ```
+
+`--torch-backend=cpu` is not optional on Linux: without it the resolver pulls the
+~2.5GB CUDA build of torch, which cannot run on a machine with no GPU.
+`tests/test_stack.py` fails if a CUDA wheel is installed. See the header of
+`requirements.txt` for the plain-`pip` equivalent.
+
+Verify the install with `.venv/bin/python -m pytest` — the suite pins the
+dependency properties the three-arm comparison relies on and touches nothing
+outside the venv.
 
 Add Neo4j credentials to a `.env` file at the repo root (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`) — see [Data](#data).
 
@@ -62,9 +71,10 @@ docs/                 research notes and agent docs
 tests/                cast/censoring/split correctness
 ```
 
-Each package directory's `__init__.py` documents what belongs in it. There is no
-build config yet, so a notebook importing the package needs the repo root on
-`sys.path` (`sys.path.insert(0, "..")`).
+Each package directory's `__init__.py` documents what belongs in it. `pyproject.toml`
+carries tool configuration only — the project is not packaged or installed, so a
+notebook importing the package still needs the repo root on `sys.path`
+(`sys.path.insert(0, "..")`).
 
 ## Notebooks
 
