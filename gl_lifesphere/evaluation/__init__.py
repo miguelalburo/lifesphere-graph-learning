@@ -11,3 +11,33 @@
 
 Writes to `results/metrics/` and `results/figures/`.
 """
+
+from __future__ import annotations
+
+from .splits import (
+    FOLDS_DIR,
+    N_SPLITS,
+    SEED,
+    FoldSplit,
+    assert_one_fold_per_subject,
+    assign_folds,
+    fold_split,
+    freeze,
+    load_folds,
+    sparse_studies,
+    study_fold_event_counts,
+)
+
+__all__ = [
+    "FOLDS_DIR",
+    "N_SPLITS",
+    "SEED",
+    "FoldSplit",
+    "assert_one_fold_per_subject",
+    "assign_folds",
+    "fold_split",
+    "freeze",
+    "load_folds",
+    "sparse_studies",
+    "study_fold_event_counts",
+]
