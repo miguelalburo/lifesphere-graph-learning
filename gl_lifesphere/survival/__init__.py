@@ -11,4 +11,23 @@ flattened features, or the clinical baseline.
            formulations. Plain regression on `timeToEventDays` is not an option
            here — it cannot use censored records, which are ~70% of the data.
 - metrics  C-index, time-dependent AUC, Brier score.
+
+Locked by #3: Cox partial likelihood (continuous time), Efron ties, Study
+stratification, `Linear(d, 1, bias=False)` head, two-stage wiring
+(`torchsurv` trains the encoder, `lifelines.CoxPHFitter(strata=['study'])` is
+the one shared decoder every arm is refit and scored through).
 """
+
+from __future__ import annotations
+
+from . import decoder, losses, metrics
+from .targets import SurvivalTarget, load_survival_frame, load_targets
+
+__all__ = [
+    "SurvivalTarget",
+    "decoder",
+    "load_survival_frame",
+    "load_targets",
+    "losses",
+    "metrics",
+]
