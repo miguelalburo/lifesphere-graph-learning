@@ -74,10 +74,11 @@ def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> lis
             flag = "OK"
         else:
             flag = "OUT OF BAND"
-        c_display = f"{check.observed_c:.4f}" if check.observed_c is not None else "n/a"
+        uno_display = f"{check.observed_c:.4f}" if check.observed_c is not None else "n/a"
+        harrell_display = f"{check.harrell_c:.4f}" if check.harrell_c is not None else "n/a"
         print(
-            f"sanity check {check.study}: C={c_display} band={check.band} "
-            f"n={check.n_subjects} events={check.n_events} -> {flag}"
+            f"sanity check {check.study}: Uno C={uno_display} (Harrell C={harrell_display}) "
+            f"band={check.band} n={check.n_subjects} events={check.n_events} -> {flag}"
         )
 
     return results

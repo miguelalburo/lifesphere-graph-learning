@@ -15,6 +15,22 @@ every BRCA/KIRC/LUAD Subject once, out of sample, with no re-use of a
 training-fold prediction — the same failure mode #3 §5's within-Study metric
 guards against, one fold at a time, is the reason this file is a study-level
 pool across folds instead of a report from a single fold's held-out slice.
+
+**The band comparison uses Uno's C, not Harrell's C, and this matters.**
+Herrmann et al.'s published numbers *are* Uno's IPCW-corrected C (#2 §5),
+and #2 §7 warns explicitly: "A Harrell's C on our folds will typically read
+higher for the same model quality — the table is a floor, not a matched
+comparison." An earlier version of this module compared Harrell's C against
+these bands directly and got a false alarm on BRCA (0.7304, above its
+0.60-0.67 band) that vanished under Uno's C (0.6375, inside the band) —
+confirmed by investigation on 2026-08-08: Harrell reading optimistic under
+BRCA's censoring, not a pipeline defect. `harrell_c` is still reported
+alongside for transparency (it is this project's own headline metric
+elsewhere), but `in_band` is decided on Uno's C, the metric the band was
+actually calibrated against. The censoring distribution for the IPCW weights
+is estimated from the full pooled out-of-sample cohort (all 20 Studies), not
+per-Study — the simplest defensible reference given this check runs once
+across all folds rather than inside a single fold's train/test split.
 """
 
 from __future__ import annotations
@@ -39,7 +55,11 @@ SANITY_BANDS: dict[str, tuple[float, float]] = {
 class SanityCheckResult:
     study: str
     band: tuple[float, float]
+    # Uno's C -- what the band is actually checked against, matching
+    # Herrmann et al.'s own metric.
     observed_c: float | None
+    # Harrell's C, reported for transparency only; not compared to the band.
+    harrell_c: float | None
     n_subjects: int
     n_events: int
 
@@ -55,6 +75,7 @@ class SanityCheckResult:
             "study": self.study,
             "band": list(self.band),
             "observed_c": self.observed_c,
+            "harrell_c": self.harrell_c,
             "in_band": self.in_band,
             "n_subjects": self.n_subjects,
             "n_events": self.n_events,
@@ -83,24 +104,46 @@ def run_sanity_check(oos_predictions: pd.DataFrame) -> list[SanityCheckResult]:
     """One `SanityCheckResult` per Study in `SANITY_BANDS`.
 
     `oos_predictions` must carry `studyId`/`risk`/`durationDays`/`event`, one
-    row per Subject — `pooled_out_of_sample_predictions`'s shape.
+    row per Subject — `pooled_out_of_sample_predictions`'s shape. The full
+    frame also supplies the censoring-distribution reference for each
+    Study's Uno's C (see the module docstring).
     """
+    all_event = oos_predictions["event"].to_numpy()
+    all_time = oos_predictions["durationDays"].to_numpy()
+
     results = []
     for study, band in SANITY_BANDS.items():
         rows = oos_predictions[oos_predictions["studyId"] == study]
+        event = rows["event"].to_numpy()
+        time = rows["durationDays"].to_numpy()
+        risk = rows["risk"].to_numpy()
         n_events = int(rows["event"].sum())
-        c: float | None
+
+        harrell: float | None
         try:
-            c = metrics.harrell_c(
-                rows["event"].to_numpy(), rows["durationDays"].to_numpy(), rows["risk"].to_numpy()
-            )
+            harrell = metrics.harrell_c(event, time, risk)
         except NoComparablePairException:
-            # No Study rows at all, or none with a comparable pair -- reported
-            # as unscoreable (`observed_c=None`), not silently averaged in.
-            c = None
+            harrell = None
+
+        uno: float | None
+        try:
+            if not (event.any() and all_event.any()):
+                raise NoComparablePairException("no events to anchor a comparable pair")
+            tau = float(min(all_time[all_event].max(), time[event].max()))
+            uno = metrics.uno_c(
+                train_event=all_event, train_time=all_time, test_event=event, test_time=time,
+                risk=risk, tau=tau,
+            )
+        except (NoComparablePairException, ValueError):
+            # No Study rows at all, no event to anchor a pair, or sksurv's IPCW
+            # estimator refusing the tau -- reported as unscoreable
+            # (`observed_c=None`), not silently averaged in.
+            uno = None
+
         results.append(
             SanityCheckResult(
-                study=study, band=band, observed_c=c, n_subjects=len(rows), n_events=n_events
+                study=study, band=band, observed_c=uno, harrell_c=harrell,
+                n_subjects=len(rows), n_events=n_events,
             )
         )
     return results

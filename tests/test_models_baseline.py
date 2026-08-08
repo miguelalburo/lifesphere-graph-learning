@@ -163,6 +163,36 @@ class TestRunAllFolds:
 
 
 class TestSanityCheck:
+    def test_band_is_checked_against_unos_c_not_harrells_c(self) -> None:
+        """The fix this pins: an earlier version compared Harrell's C to these
+        bands directly and got a false alarm on the real BRCA result (0.7304,
+        above its 0.60-0.67 band) that vanished under Uno's C (0.6375, inside
+        it) -- Harrell reads optimistic under censoring (#2 §7), and the bands
+        are calibrated against Herrmann et al.'s own Uno's C (#2 §5). Reuses
+        `tests/test_survival_metrics.py`'s stratified-cohort shape (heavy,
+        integer-day censoring) collapsed onto one Study, since that is where
+        the Harrell/Uno gap is known to be measurable and non-flaky."""
+        rng = np.random.default_rng(0)
+        beta = np.array([0.8, -0.5, 0.2])
+        n, n_strata = 400, 5
+        x = rng.normal(size=(n, len(beta)))
+        stratum = rng.integers(0, n_strata, size=n)
+        latent = rng.exponential(scale=np.exp(-(x @ beta)) * (1.0 + stratum))
+        censor = rng.exponential(scale=2.0 * (1.0 + stratum), size=n)
+        time = np.ceil(np.minimum(latent, censor) * 60.0)
+        event = latent <= censor
+        risk = x @ beta
+
+        frame = pd.DataFrame(
+            {"studyId": ["TCGA-BRCA"] * n, "risk": risk, "durationDays": time, "event": event},
+            index=pd.Index([f"S{i}" for i in range(n)], name="subjectId"),
+        )
+        result = next(r for r in run_sanity_check(frame) if r.study == "TCGA-BRCA")
+        assert result.harrell_c is not None and result.observed_c is not None
+        assert result.harrell_c > result.observed_c
+        assert result.harrell_c == pytest.approx(result.to_dict()["harrell_c"])
+        assert result.observed_c == pytest.approx(result.to_dict()["observed_c"])
+
     def test_pooling_raises_on_a_duplicated_subject(self) -> None:
         one = pd.DataFrame(
             {"studyId": ["TCGA-BRCA"], "risk": [0.1], "durationDays": [10.0], "event": [True]},
