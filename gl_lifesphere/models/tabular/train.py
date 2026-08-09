@@ -156,6 +156,7 @@ def run_fold(
     targets: SurvivalTarget,
     split: FoldSplit,
     config: TabularArmConfig,
+    expect_discrimination: bool = True,
 ) -> FoldResult:
     """One outer fold, end to end: fit contract -> train encoder -> select lambda -> score.
 
@@ -165,6 +166,9 @@ def run_fold(
     check on held-out data is compromised. Also runs #3 §3's two pre-declared
     diagnostics (random-init encoder, end-to-end score) alongside the primary
     two-stage result.
+
+    `expect_discrimination=False` belongs to #13's label shuffle alone; see
+    `survival.two_stage.two_stage_score`.
     """
     contract = fit_feature_contract(raw, split.train)
 
@@ -190,6 +194,7 @@ def run_fold(
         test_target=test_target,
         penalty_grid=config.penalty_grid,
         where=f"arm2 fold {outer_fold} (train+val)",
+        expect_discrimination=expect_discrimination,
     )
 
     random_model = _new_encoder(x_train.shape[1], config=config).eval()
@@ -202,6 +207,7 @@ def run_fold(
         test_target=test_target,
         penalty_grid=config.penalty_grid,
         where=f"arm2 fold {outer_fold} (random-init control)",
+        expect_discrimination=expect_discrimination,
     )
 
     end_to_end = training.end_to_end_score(
@@ -211,6 +217,7 @@ def run_fold(
         test_input=_to_tensor(x_test),
         test_target=test_target,
         where=f"arm2 fold {outer_fold} (end-to-end diagnostic)",
+        expect_discrimination=expect_discrimination,
     )
 
     return FoldResult(

@@ -27,12 +27,17 @@ from sksurv.metrics import (
     cumulative_dynamic_auc,
     integrated_brier_score as _sksurv_integrated_brier_score,
 )
+from sksurv.nonparametric import CensoringDistributionEstimator
 from sksurv.util import Surv
 
 # 1, 2 and 3 years in days, and the Brier integration window (#3 §5) — chosen
 # from what the follow-up actually supports, not by convention: beyond 3 years
 # a per-Study metric is fiction (decoder doc §5's at-risk table).
 DEFAULT_HORIZONS_DAYS: tuple[float, ...] = (365.0, 730.0, 1095.0)
+
+# The metric #3 §5 makes this study's headline, named once so the arms, the
+# comparison code and #13's gate cannot disagree about which key that is.
+HEADLINE = "within_study_harrell_c"
 
 
 @dataclass(frozen=True)
@@ -185,14 +190,94 @@ def integrated_brier(
     )
 
 
+IPCW_UNDEFINED = (
+    "Not computed: some held-out Subject outlives the training fold's follow-up, and the "
+    "censoring distribution is fit on the training fold, so their IPCW weight is undefined "
+    "(sksurv raises rather than extrapolating). Every ranking metric is unaffected."
+)
+
+
+def _censoring(train_event: np.ndarray, train_time: np.ndarray) -> CensoringDistributionEstimator:
+    return CensoringDistributionEstimator().fit(
+        Surv.from_arrays(event=train_event, time=train_time)
+    )
+
+
+def _within_support(censoring: CensoringDistributionEstimator, times: np.ndarray) -> bool:
+    """sksurv's own rule: past the last training observation, `G` is undefined
+    unless it has already reached 0 there (a censored tail), in which case the
+    weight is legitimately 0."""
+    beyond = np.asarray(times, dtype="float64") > censoring.unique_time_[-1]
+    return not (censoring.prob_[-1] > 0 and bool(beyond.any()))
+
+
+def brier_ipcw_is_defined(
+    train_event: np.ndarray, train_time: np.ndarray, test_time: np.ndarray
+) -> bool:
+    """Whether `brier_score` can weight every held-out Subject.
+
+    It calls `predict_proba(test_time)` over **all** test times — censored ones
+    included, since a Subject still at risk at `t` contributes the control term
+    — so every test time must lie within the training fold's censoring support.
+    A zero weight is fine here: `brier_score` maps `G = 0` to `inf` and the
+    Subject drops out.
+
+    **A boundary this project sat right on the edge of.** On the real labels
+    fold 0 already holds a test Subject beyond its training follow-up
+    (11,259 days against 11,224) and scores anyway, purely because that last
+    training observation happens to be censored. #13's label shuffle moved the
+    labels and the same fold started failing — the crash was not caused by the
+    permutation, it was *revealed* by it, and it would have hit a later
+    endpoint, seed or cohort refresh with no warning.
+
+    Asked here rather than caught as an exception, and answered by fitting
+    sksurv's own estimator rather than by reimplementing its rule, so this
+    cannot drift away from the library it is guarding.
+    """
+    return _within_support(_censoring(train_event, train_time), test_time)
+
+
+def auc_ipcw_is_defined(
+    train_event: np.ndarray,
+    train_time: np.ndarray,
+    test_event: np.ndarray,
+    test_time: np.ndarray,
+) -> bool:
+    """Whether `cumulative_dynamic_auc` can weight every held-out **event**.
+
+    Deliberately a different question from `brier_ipcw_is_defined`, because
+    sksurv asks a different one: `predict_ipcw` evaluates `G` at `time[event]`
+    only, so a censored Subject beyond the training follow-up costs the AUC
+    nothing. Gating both metrics on the stricter Brier condition would suppress
+    an AUC that is perfectly computable.
+
+    It is also stricter in the other direction: `predict_ipcw` raises outright
+    on `G = 0` rather than dropping the Subject, so a zero weight at an event
+    time fails here where it would pass for the Brier score.
+    """
+    censoring = _censoring(train_event, train_time)
+    event_times = np.asarray(test_time, dtype="float64")[np.asarray(test_event, dtype=bool)]
+    if not len(event_times):
+        return False
+    if not _within_support(censoring, event_times):
+        return False
+    return bool((censoring.predict_proba(event_times) > 0).all())
+
+
 def assert_discriminates(
     event: np.ndarray, time: np.ndarray, risk: np.ndarray, *, where: str, min_c: float = 0.5
-) -> None:
-    """Raise unless `risk` discriminates better than chance (#3 §6).
+) -> float:
+    """Raise unless `risk` discriminates better than chance (#3 §6), returning the C it computed.
 
     Every arm should call this on its own training-fold score. A sign error in
     the risk convention does not crash — it silently produces `C = 1 - C`,
     which reads as "a bad model" rather than as the defect it is.
+
+    The C is returned rather than discarded so a caller that has already paid
+    for it can record it. #13's label shuffle is the reason that matters: it is
+    a control *designed* not to discriminate, so it skips this check entirely
+    (`two_stage_score(expect_discrimination=False)`) and the training-fold C
+    becomes a number to report rather than a precondition to enforce.
     """
     c = harrell_c(event, time, risk)
     if c <= min_c:
@@ -200,6 +285,7 @@ def assert_discriminates(
             f"{where}: Harrell C = {c:.4f} does not exceed {min_c}; the risk score may be "
             "inverted (a flipped sign silently produces 1 - C) or the model may not have trained."
         )
+    return c
 
 
 @dataclass(frozen=True)
@@ -213,9 +299,12 @@ class FoldMetrics:
     integrated_brier: float | None
     n_test: int
     n_events_test: int
+    # Set only when the IPCW-weighted metrics were skipped rather than computed,
+    # so an absent Brier score in a result file says why it is absent.
+    ipcw_note: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        recorded: dict[str, object] = {
             "pooled_harrell_c": self.pooled_harrell_c,
             "within_study_harrell_c": self.within_study.cindex,
             "within_study_excluded_studies": list(self.within_study.excluded_studies),
@@ -226,6 +315,9 @@ class FoldMetrics:
             "n_test": self.n_test,
             "n_events_test": self.n_events_test,
         }
+        if self.ipcw_note is not None:
+            recorded["ipcw_note"] = self.ipcw_note
+        return recorded
 
 
 def score_fold(
@@ -245,7 +337,21 @@ def score_fold(
     requires the decoder's Breslow baseline hazard, which not every caller has
     computed — when omitted, `integrated_brier_score` is `None` and every
     ranking metric is still returned.
+
+    The Brier score and the time-dependent AUC are additionally skipped when no
+    IPCW weight exists for a held-out Subject. That is the same "this metric is
+    not available for this fold" path rather than a new one, and it is
+    deliberately narrow: the two ranking metrics that carry every headline in
+    this project — pooled and within-Study Harrell C — need no censoring
+    estimate and are always computed.
+
+    The two are asked separately because sksurv weights them at different
+    times: the Brier score over every test time, the AUC over event times only.
+    One shared check would suppress an AUC that is perfectly computable.
     """
+    brier_covered = brier_ipcw_is_defined(train_event, train_time, test_time)
+    auc_covered = auc_ipcw_is_defined(train_event, train_time, test_event, test_time)
+
     brier = (
         integrated_brier(
             train_event=train_event,
@@ -255,7 +361,7 @@ def score_fold(
             survival_probabilities=survival_probabilities,
             horizons=horizons,
         )
-        if survival_probabilities is not None
+        if survival_probabilities is not None and brier_covered
         else None
     )
     return FoldMetrics(
@@ -268,15 +374,20 @@ def score_fold(
             test_time=test_time,
             risk=risk,
         ),
-        td_auc=time_dependent_auc(
-            train_event=train_event,
-            train_time=train_time,
-            test_event=test_event,
-            test_time=test_time,
-            risk=risk,
-            horizons=horizons,
+        td_auc=(
+            time_dependent_auc(
+                train_event=train_event,
+                train_time=train_time,
+                test_event=test_event,
+                test_time=test_time,
+                risk=risk,
+                horizons=horizons,
+            )
+            if auc_covered
+            else {}
         ),
         integrated_brier=brier,
         n_test=int(len(test_time)),
         n_events_test=int(test_event.sum()),
+        ipcw_note=None if (brier_covered and auc_covered) else IPCW_UNDEFINED,
     )

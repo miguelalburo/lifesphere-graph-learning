@@ -1,0 +1,18 @@
+{
+  "_comment": "The trust gate (#13): encoder doc \u00a77's three diagnostics, run before any arm's C-index is read as a result. OS endpoint, 20-Study cohort, 5-fold Study-stratified CV (#7), the survival contract locked by #3 and the feature contract locked by #4 and amended on #12. This is a gate, not a measurement -- every threshold below is declared here, before the run, so a diagnostic landing the wrong side of one cannot be rescued by moving the bar.",
+  "_thresholds": "All three are declared here before the run and none is read off the numbers it gates. ablation_margin = 0.02 is #3 \u00a75's resolution limit for this design -- the smallest difference 5 correlated folds can resolve, and therefore the least 'clearly beat' (\u00a77) can mean. degree_probe_ceiling = 0.55 and shuffle_tolerance = 0.05 are both the top of the chance band: 0.5 plus three standard errors of a C-index on ~1,360 held-out Subjects (~0.017 each). #13 says the counts are excluded from every arm 'precisely so this probe should come out weak', so weak means indistinguishable from chance, not merely below the arms -- a bar derived from the arms' own scores would not be a declared bar.",
+  "_schemes": "The label shuffle runs two permutations. 'global' is \u00a77's own specification and the one the gate judges. 'within_study' keeps each label inside its Study, which destroys what within_study_harrell_c measures while preserving Study-level survival differences -- so arms 2/3 keeping a pooled C above 0.5 there is #4 \u00a76's immunity argument demonstrated, not a leak. It is recorded, never gated on.",
+  "_intervention_counts": "The degree probe needs n_interventions, which the frozen extract deliberately does not carry (extract.cypher.DROPPED_NODE_TYPES -- bare Intervention presence is an immortal-time leak, #4 \u00a74, HR 0.716, p = 8.5e-05). It is pulled by `python -m gl_lifesphere.diagnostics --pull-counts` into data/interim/diagnostics/, outside every path an arm loads from.",
+  "endpoint": "OS",
+  "split": "5fold_study_stratified_seed0",
+  "seed": 0,
+  "ablation_margin": 0.02,
+  "degree_probe_ceiling": 0.55,
+  "shuffle_tolerance": 0.05,
+  "shuffle_schemes": [
+    "global",
+    "within_study"
+  ],
+  "shuffle_gate_scheme": "global",
+  "_arms": "The shuffle retrains each arm and reads their hyperparameters from the arms' own config files (experiments/configs/arm{1,2,3}_*.json), never from a copy here -- a second place to change them is a second place to forget, and the shuffle has no check_comparable equivalent to catch the drift."
+}

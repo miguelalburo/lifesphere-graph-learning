@@ -16,10 +16,17 @@ assert against `cohort.EXPECTED_*` and the live artefact, not against these.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    # Imported for annotations only: this module is loaded by every test file,
+    # and the arm packages pull in torch/lifelines at import time.
+    from gl_lifesphere.constructions.cache import SubjectRecords
+    from gl_lifesphere.evaluation.splits import FoldSplit
+    from gl_lifesphere.survival.targets import SurvivalTarget
 
 
 def raw_subjects() -> list[dict[str, Any]]:
@@ -432,3 +439,62 @@ def synthetic_survival(interim: dict[str, pd.DataFrame], *, seed: int = 0) -> pd
             "event": latent <= censor,
         }
     )
+
+
+def synthetic_arm_inputs(
+    n_per_study: int = 20,
+) -> "tuple[SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]":
+    """`(records, raw, targets, split)` — everything an arm's `run_fold` needs.
+
+    Shared by `test_graph.py` and `test_diagnostics.py` rather than built twice.
+    #13's controls are only meaningful if they run against the same inputs the
+    arm does, and two fixtures that were supposed to agree and drifted would
+    make a diagnostic pass or fail for reasons that have nothing to do with the
+    thing it tests.
+
+    The split is a contiguous 60/20/20, stratified by construction: each Study
+    occupies a fixed contiguous block of `n_per_study` Subjects.
+    """
+    from gl_lifesphere.constructions import cache
+    from gl_lifesphere.evaluation.splits import FoldSplit
+    from gl_lifesphere.extract.cast import reduce_diagnoses
+    from gl_lifesphere.features.raw import build_raw_frame
+    from gl_lifesphere.survival.targets import SurvivalTarget
+
+    interim = synthetic_interim(n_per_study)
+    labels = synthetic_survival(interim)
+
+    records = cache.build_subject_records(
+        members=interim["members"],
+        subjects=interim["subjects"],
+        diagnoses=interim["diagnoses"],
+        samples=interim["samples"],
+        pathology=interim["pathology_details"],
+    )
+    raw = build_raw_frame(
+        members=interim["members"],
+        subjects=interim["subjects"],
+        diagnosis_primary=reduce_diagnoses(interim["diagnoses"]),
+        samples=interim["samples"],
+    )
+    targets = SurvivalTarget(
+        subject_id=labels["subjectId"].to_numpy(),
+        study=labels["studyId"].to_numpy(),
+        time=labels["durationDays"].to_numpy(dtype="float64"),
+        event=labels["event"].to_numpy(dtype="bool"),
+    )
+
+    train_ids: set[str] = set()
+    val_ids: set[str] = set()
+    test_ids: set[str] = set()
+    subject_ids = list(interim["members"]["subjectId"])
+    for s in range(len(SYNTHETIC_STUDIES)):
+        block = subject_ids[s * n_per_study : (s + 1) * n_per_study]
+        train_ids.update(block[:12])
+        val_ids.update(block[12:16])
+        test_ids.update(block[16:])
+
+    split = FoldSplit(
+        train=frozenset(train_ids), val=frozenset(val_ids), test=frozenset(test_ids)
+    )
+    return records, raw, targets, split

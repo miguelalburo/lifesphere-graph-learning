@@ -264,3 +264,128 @@ class TestScoreFold:
         )
         assert result.integrated_brier is not None
         assert 0.0 <= result.integrated_brier <= 1.0
+
+
+class TestIpcwCoverage:
+    """The Brier score and the time-dependent AUC weight each held-out Subject
+    by `1/G(y_i)`, with `G` fit on the training fold. A Subject who outlives
+    that fold's follow-up has no such weight, and sksurv raises rather than
+    extrapolating.
+
+    This project sits right on that boundary: with the real labels, fold 0
+    already holds a test Subject past its training follow-up and scores anyway,
+    purely because the last training observation happens to be censored. #13's
+    label shuffle moved the labels and the same fold started raising — so the
+    crash was revealed by the permutation, not caused by it, and it would have
+    surfaced later on a different endpoint or seed with no warning.
+    """
+
+    @staticmethod
+    def _train(last_is_event: bool) -> tuple[np.ndarray, np.ndarray]:
+        event = np.array([True, False, True, False, last_is_event])
+        time = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+        return event, time
+
+    def test_a_test_time_inside_the_training_follow_up_is_always_covered(self) -> None:
+        event, time = self._train(last_is_event=True)
+
+        assert metrics.brier_ipcw_is_defined(event, time, np.array([10.0, 45.0, 50.0]))
+
+    def test_outliving_the_training_fold_is_uncovered_when_it_ended_in_an_event(self) -> None:
+        event, time = self._train(last_is_event=True)
+
+        assert not metrics.brier_ipcw_is_defined(event, time, np.array([10.0, 60.0]))
+
+    def test_outliving_it_is_still_covered_when_the_last_observation_was_censored(self) -> None:
+        """`G` has already reached 0 there, so the weight is legitimately 0
+        rather than undefined — which is the only reason the real fold 0 scores."""
+        event, time = self._train(last_is_event=False)
+
+        assert metrics.brier_ipcw_is_defined(event, time, np.array([10.0, 60.0]))
+
+    def test_the_auc_only_needs_event_times_to_be_covered(self) -> None:
+        """`cumulative_dynamic_auc` weights through `predict_ipcw`, which
+        evaluates `G` at `time[event]` only — so a *censored* Subject beyond the
+        training follow-up costs the AUC nothing, while the Brier score, which
+        evaluates every test time, cannot weight them. Gating both on the Brier
+        condition would suppress an AUC that is perfectly computable."""
+        event, time = self._train(last_is_event=True)
+        # One held-out Subject past the training follow-up, censored.
+        test_time = np.array([10.0, 60.0])
+        test_event = np.array([True, False])
+
+        assert not metrics.brier_ipcw_is_defined(event, time, test_time)
+        assert metrics.auc_ipcw_is_defined(event, time, test_event, test_time)
+
+    def test_the_auc_refuses_an_event_beyond_the_training_follow_up(self) -> None:
+        event, time = self._train(last_is_event=True)
+
+        assert not metrics.auc_ipcw_is_defined(
+            event, time, np.array([True, True]), np.array([10.0, 60.0])
+        )
+
+    def test_score_fold_skips_only_the_metric_that_cannot_be_weighted(self) -> None:
+        """A *censored* Subject past the training follow-up costs the Brier
+        score but not the AUC, and `score_fold` must skip only the one that is
+        actually undefined. The ranking metrics that carry every headline in
+        this project need no censoring estimate at all, so they are always
+        returned."""
+        risk, event, time, study = _stratified_cohort()
+        time = time * 20.0 + 1.0
+        # The training fold ends in an event, so `G` never reaches 0 and a test
+        # time beyond it is genuinely unweightable.
+        train_event = event.copy()
+        train_event[np.argmax(time)] = True
+        test_time = time.copy()
+        test_time[0] = time.max() + 1000.0
+        test_event = event.copy()
+        test_event[0] = False
+
+        result = metrics.score_fold(
+            train_time=time,
+            train_event=train_event,
+            test_time=test_time,
+            test_event=test_event,
+            test_study=study,
+            risk=risk,
+            survival_probabilities=np.tile(
+                np.linspace(0.9, 0.1, len(metrics.DEFAULT_HORIZONS_DAYS)), (len(time), 1)
+            ),
+        )
+
+        assert result.integrated_brier is None
+        assert set(result.td_auc) == set(metrics.DEFAULT_HORIZONS_DAYS)
+        assert result.ipcw_note is not None
+        assert 0.0 <= result.pooled_harrell_c <= 1.0
+        assert result.to_dict()["ipcw_note"] == metrics.IPCW_UNDEFINED
+
+    def test_score_fold_skips_both_when_the_uncovered_subject_had_an_event(self) -> None:
+        risk, event, time, study = _stratified_cohort()
+        time = time * 20.0 + 1.0
+        train_event = event.copy()
+        train_event[np.argmax(time)] = True
+        test_time = time.copy()
+        test_time[0] = time.max() + 1000.0
+        test_event = event.copy()
+        test_event[0] = True
+
+        result = metrics.score_fold(
+            train_time=time, train_event=train_event, test_time=test_time,
+            test_event=test_event, test_study=study, risk=risk,
+        )
+
+        assert result.td_auc == {}
+        assert result.integrated_brier is None
+        assert result.ipcw_note is not None
+
+    def test_a_covered_fold_records_no_note(self) -> None:
+        risk, event, time, study = _stratified_cohort()
+        time = time * 20.0 + 1.0
+
+        result = metrics.score_fold(
+            train_time=time, train_event=event, test_time=time, test_event=event,
+            test_study=study, risk=risk,
+        )
+
+        assert result.ipcw_note is None
+        assert "ipcw_note" not in result.to_dict()

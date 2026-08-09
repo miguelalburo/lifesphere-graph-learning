@@ -27,9 +27,7 @@ from torch_geometric.data import Batch
 from gl_lifesphere.constructions import cache
 from gl_lifesphere.constructions import subject_subgraph as ss
 from gl_lifesphere.evaluation.splits import FoldSplit
-from gl_lifesphere.extract.cast import reduce_diagnoses
 from gl_lifesphere.features.contract import fit_feature_contract
-from gl_lifesphere.features.raw import build_raw_frame
 from gl_lifesphere.models import training
 from gl_lifesphere.models.graph import (
     GraphArmConfig,
@@ -44,45 +42,7 @@ N_PER_STUDY = 20
 
 @pytest.fixture
 def synthetic_cohort() -> tuple[cache.SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]:
-    interim = fixtures.synthetic_interim(N_PER_STUDY)
-    labels = fixtures.synthetic_survival(interim)
-
-    records = cache.build_subject_records(
-        members=interim["members"],
-        subjects=interim["subjects"],
-        diagnoses=interim["diagnoses"],
-        samples=interim["samples"],
-        pathology=interim["pathology_details"],
-    )
-    raw = build_raw_frame(
-        members=interim["members"],
-        subjects=interim["subjects"],
-        diagnosis_primary=reduce_diagnoses(interim["diagnoses"]),
-        samples=interim["samples"],
-    )
-    targets = SurvivalTarget(
-        subject_id=labels["subjectId"].to_numpy(),
-        study=labels["studyId"].to_numpy(),
-        time=labels["durationDays"].to_numpy(dtype="float64"),
-        event=labels["event"].to_numpy(dtype="bool"),
-    )
-
-    # A contiguous 60/20/20 split, stratified by construction since each Study
-    # occupies a fixed contiguous block of `N_PER_STUDY`.
-    train_ids: set[str] = set()
-    val_ids: set[str] = set()
-    test_ids: set[str] = set()
-    subject_ids = list(interim["members"]["subjectId"])
-    for s in range(len(fixtures.SYNTHETIC_STUDIES)):
-        block = subject_ids[s * N_PER_STUDY : (s + 1) * N_PER_STUDY]
-        train_ids.update(block[:12])
-        val_ids.update(block[12:16])
-        test_ids.update(block[16:])
-
-    split = FoldSplit(
-        train=frozenset(train_ids), val=frozenset(val_ids), test=frozenset(test_ids)
-    )
-    return records, raw, targets, split
+    return fixtures.synthetic_arm_inputs(N_PER_STUDY)
 
 
 def _config(**overrides: object) -> GraphArmConfig:

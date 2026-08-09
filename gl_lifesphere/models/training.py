@@ -172,12 +172,17 @@ def end_to_end_score(
     test_input: Any,
     test_target: SurvivalTarget,
     where: str,
+    expect_discrimination: bool = True,
 ) -> metrics.FoldMetrics:
     """#3 §3's by-product diagnostic: score with the trained head directly.
 
     Bypasses the shared decoder entirely. No survival function exists here — a
     raw NN head produces a ranking, not a Breslow baseline hazard — so this
     never carries an integrated Brier score.
+
+    `expect_discrimination=False` is #13's label-shuffle control and nothing
+    else; see `survival.two_stage.two_stage_score` for why the self-check has
+    to come off there.
     """
     model.eval()
     with torch.no_grad():
@@ -186,9 +191,10 @@ def end_to_end_score(
 
     # #3 §6: self-check the training-fold score before trusting the held-out
     # one — a sign-inverted risk silently produces `1 - C`.
-    metrics.assert_discriminates(
-        trainval_target.event, trainval_target.time, trainval_risk, where=where
-    )
+    if expect_discrimination:
+        metrics.assert_discriminates(
+            trainval_target.event, trainval_target.time, trainval_risk, where=where
+        )
 
     return metrics.score_fold(
         train_time=trainval_target.time,

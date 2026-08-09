@@ -98,6 +98,14 @@ class GraphArmConfig:
     seed: int = 0
     split_primary_relation: bool = True
     add_reverse_edges: bool = True
+    # #13's structure ablation. A field on this arm's own config rather than a
+    # switch in `diagnostics/` because that is what makes the control's claim
+    # true: "an identical model with all `edge_index` tensors emptied" (encoder
+    # doc §7) has to be the identical code path, one boolean apart, or the
+    # comparison acquires a second difference nobody meant to introduce. What
+    # the ablation *means*, and the threshold it is judged against, belong to
+    # `diagnostics.gate`; the mechanism belongs here.
+    ablate_edges: bool = False
     penalty_grid: tuple[float, ...] = decoder.PENALTY_GRID
 
     @classmethod
@@ -239,18 +247,32 @@ class FoldResult:
         }
 
 
-def _describe(subgraphs: cache.SubgraphSet, blocks: FeatureBlocks, model: SubjectSubgraphEncoder) -> dict[str, object]:
+def _describe(
+    subgraphs: cache.SubgraphSet,
+    blocks: FeatureBlocks,
+    model: SubjectSubgraphEncoder,
+    *,
+    edges_ablated: bool,
+) -> dict[str, object]:
     """What was actually built and trained, recorded beside the metrics.
 
     The shape of the raw construction has moved twice already — 7 node types
     and 6 relations on #1, 5/4 after #4, and the relation split on #11 — so a
     metric with no record of which shape produced it is not reproducible.
+
+    `edges_ablated` is recorded here rather than left to the config because
+    `relation_types` cannot show it: #13's ablation keeps every relation type
+    and empties its contents, so an ablated fold and a real one are
+    indistinguishable in this block without the flag. `n_edges` is recorded for
+    the same reason and is the direct evidence — it is 0 under the ablation.
     """
     reference = subgraphs.graphs[0]
     return {
         "n_subjects": len(subgraphs),
         "node_types": sorted(reference.node_types),
         "relation_types": sorted("__".join(edge) for edge in reference.edge_types),
+        "n_edges": sum(int(graph.num_edges) for graph in subgraphs.graphs),
+        "edges_ablated": edges_ablated,
         "feature_widths": dict(sorted(blocks.widths.items())),
         "n_parameters": sum(p.numel() for p in model.parameters()),
         "fingerprint": subgraphs.fingerprint,
@@ -268,6 +290,7 @@ def run_fold(
     config: GraphArmConfig,
     cache_dir: Path | None = None,
     use_cache: bool = True,
+    expect_discrimination: bool = True,
 ) -> FoldResult:
     """One outer fold, end to end: fit contract -> build -> train -> select lambda -> score.
 
@@ -276,6 +299,9 @@ def run_fold(
     must see only train-fitted statistics, or its role as an early-stopping and
     lambda-selection check on held-out data is compromised. The construction is
     then built under that contract, which is why the cache is keyed on it.
+
+    `expect_discrimination=False` belongs to #13's label shuffle alone; see
+    `survival.two_stage.two_stage_score`.
     """
     contract = fit_feature_contract(raw, split.train)
     blocks = FeatureBlocks.from_contract(contract)
@@ -289,6 +315,11 @@ def run_fold(
         directory=cache_dir,
         use_cache=use_cache,
     )
+    # After the cache read, never before it: the ablated run must consume the
+    # same entry the real run does, so that "identical but for the edges" is a
+    # property of the code rather than of two builds agreeing (#13).
+    if config.ablate_edges:
+        subgraphs = cache.without_edges(subgraphs)
 
     train = collate(subgraphs, split.train, targets)
     val = collate(subgraphs, split.val, targets)
@@ -306,6 +337,7 @@ def run_fold(
         test_target=test.target,
         penalty_grid=config.penalty_grid,
         where=f"arm3 fold {outer_fold} (train+val)",
+        expect_discrimination=expect_discrimination,
     )
 
     random_model = _new_encoder(train.batch, blocks, config=config).eval()
@@ -318,6 +350,7 @@ def run_fold(
         test_target=test.target,
         penalty_grid=config.penalty_grid,
         where=f"arm3 fold {outer_fold} (random-init control)",
+        expect_discrimination=expect_discrimination,
     )
 
     end_to_end = training.end_to_end_score(
@@ -327,6 +360,7 @@ def run_fold(
         test_input=test.batch,
         test_target=test.target,
         where=f"arm3 fold {outer_fold} (end-to-end diagnostic)",
+        expect_discrimination=expect_discrimination,
     )
 
     return FoldResult(
@@ -334,7 +368,9 @@ def run_fold(
         config=config,
         contract=contract,
         encoder_fit=encoder_fit,
-        construction=_describe(subgraphs, blocks, encoder_fit.model),
+        construction=_describe(
+            subgraphs, blocks, encoder_fit.model, edges_ablated=config.ablate_edges
+        ),
         primary=primary,
         random_init=random_init,
         end_to_end=end_to_end,

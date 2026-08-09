@@ -60,6 +60,12 @@ from ...survival import decoder, metrics
 from ...survival.targets import SurvivalTarget, load_targets
 
 
+# Named here rather than only in `__main__` so callers that run this arm as one
+# of several — #13's label shuffle retrains all three — can address it the same
+# way they address arms 2 and 3.
+ARM = "arm1_baseline"
+
+
 def baseline_columns(contract: FeatureContract) -> list[str]:
     """The staging/pathology-only subset of one fold's fitted `FeatureContract`."""
     return [
@@ -151,6 +157,7 @@ def run_fold(
     targets: SurvivalTarget,
     split: FoldSplit,
     config: BaselineArmConfig,
+    expect_discrimination: bool = True,
 ) -> FoldResult:
     """One outer fold: fit contract on inner-train -> select lambda -> fit -> score.
 
@@ -158,6 +165,9 @@ def run_fold(
     — matching arm 2's own implementation (`gl_lifesphere/models/tabular/train.py`)
     so the nested validation slice sees only train-fitted statistics on both
     arms, not just the one with an encoder to early-stop.
+
+    `expect_discrimination=False` belongs to #13's label shuffle alone; see
+    `survival.two_stage.two_stage_score`.
     """
     contract = fit_feature_contract(raw, split.train)
     columns = baseline_columns(contract)
@@ -194,12 +204,13 @@ def run_fold(
     # #3 §6: every arm must self-check its training-fold score before trusting
     # the held-out one -- a sign-inverted risk silently produces `1 - C`.
     train_risk = decoder.risk_scores(fit, x_trainval, study=trainval_target.study)
-    metrics.assert_discriminates(
-        trainval_target.event,
-        trainval_target.time,
-        train_risk,
-        where=f"arm1 fold {outer_fold} (train+val)",
-    )
+    if expect_discrimination:
+        metrics.assert_discriminates(
+            trainval_target.event,
+            trainval_target.time,
+            train_risk,
+            where=f"arm1 fold {outer_fold} (train+val)",
+        )
 
     test_risk = decoder.risk_scores(fit, x_test, study=test_target.study)
     horizons = metrics.DEFAULT_HORIZONS_DAYS

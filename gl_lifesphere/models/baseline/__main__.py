@@ -17,7 +17,7 @@ import numpy as np
 
 from ...extract.connection import REPO_ROOT
 from .sanity_check import pooled_out_of_sample_predictions, run_sanity_check
-from .train import BaselineArmConfig, FoldResult, run_all_folds
+from .train import ARM, BaselineArmConfig, FoldResult, run_all_folds
 
 DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "arm1_baseline.json"
 DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "arm1_baseline"
@@ -60,7 +60,7 @@ def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> lis
     )
 
     summary = {
-        "arm": "arm1_baseline",
+        "arm": ARM,
         "config": payload,
         "folds": _summarise(results),
         "sanity_check": [s.to_dict() for s in sanity],

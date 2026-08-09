@@ -30,6 +30,11 @@ class TwoStageResult:
 
     penalty_selection: decoder.PenaltySelection
     fold_metrics: metrics.FoldMetrics
+    # The #3 §6 self-check's own number, kept rather than discarded. It is the
+    # in-sample C on train+val, so it is not a result — but under #13's label
+    # shuffle it is the one place a leak would show up first and loudest, since
+    # a permuted label with a leaking covariate still fits in-sample.
+    train_harrell_c: float
 
 
 def two_stage_score(
@@ -42,12 +47,21 @@ def two_stage_score(
     test_target: SurvivalTarget,
     penalty_grid: tuple[float, ...] = decoder.PENALTY_GRID,
     where: str,
+    expect_discrimination: bool = True,
 ) -> TwoStageResult:
     """Stage two, given a (frozen, already-embedded) `z`.
 
     Shared by each arm's primary trained-encoder pass and by #3 §3's
     random-init-encoder diagnostic — both are "extract `z`, then pass it through
     the identical shared decoder", differing only in where `z` came from.
+
+    `expect_discrimination=False` suppresses the #3 §6 self-check, and **only
+    #13's label-shuffle control may pass it**. That check exists because a
+    sign-inverted risk silently produces `1 - C` rather than raising; under a
+    permuted label the model is *supposed* to score at chance, so the check's
+    premise is inverted and leaving it on would turn a passing control into a
+    crash. The training-fold C is computed either way and returned on the
+    result, so nothing is lost by skipping the raise.
     """
     selection = decoder.select_penalty(
         z_train,
@@ -72,7 +86,13 @@ def two_stage_score(
     # #3 §6: every arm must self-check its training-fold score before trusting
     # the held-out one — a sign-inverted risk silently produces `1 - C`.
     train_risk = decoder.risk_scores(fit, z_trainval, study=trainval_target.study)
-    metrics.assert_discriminates(trainval_target.event, trainval_target.time, train_risk, where=where)
+    train_harrell_c = (
+        metrics.assert_discriminates(
+            trainval_target.event, trainval_target.time, train_risk, where=where
+        )
+        if expect_discrimination
+        else metrics.harrell_c(trainval_target.event, trainval_target.time, train_risk)
+    )
 
     test_risk = decoder.risk_scores(fit, z_test, study=test_target.study)
     horizons = metrics.DEFAULT_HORIZONS_DAYS
@@ -89,4 +109,8 @@ def two_stage_score(
         survival_probabilities=test_survival,
         horizons=horizons,
     )
-    return TwoStageResult(penalty_selection=selection, fold_metrics=fold_metrics)
+    return TwoStageResult(
+        penalty_selection=selection,
+        fold_metrics=fold_metrics,
+        train_harrell_c=train_harrell_c,
+    )

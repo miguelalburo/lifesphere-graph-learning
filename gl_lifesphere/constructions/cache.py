@@ -241,6 +241,40 @@ def build_subgraphs(
     )
 
 
+def without_edges(subgraphs: SubgraphSet) -> SubgraphSet:
+    """The same construction with every `edge_index` emptied — #13's structure ablation.
+
+    **Edge types survive; only their contents go.** The encoder sizes itself
+    from `reference.edge_types`, so dropping a type would drop its `W_r` and
+    change the parameter count — and the ablation would then be measuring
+    "fewer parameters" as much as "no message passing", which is precisely the
+    confound encoder doc §7 designed this control to avoid. Every relation-sum
+    instead evaluates over an empty neighbourhood and contributes exactly `0`
+    (the convolutions are bias-free, §2.4), so the root's bare-identity residual
+    is the only path left to the readout and `z_G` is a function of the
+    Subject's own demographics alone.
+
+    Applied to an already-built set rather than expressed as a `BuildOptions`
+    flag, and that is the point: the ablated run reads the *same cache entry*
+    as the real one, so the two provably differ in their edges and in nothing
+    else — not in the fitted contract, not in a vocabulary, not in a rebuild.
+
+    The fingerprint is prefixed rather than recomputed so an ablated set can
+    never be mistaken for, or written over, the construction it came from.
+    """
+    stripped = []
+    for graph in subgraphs.graphs:
+        ablated = graph.clone()
+        for edge_type in ablated.edge_types:
+            ablated[edge_type].edge_index = torch.empty((2, 0), dtype=torch.long)
+        stripped.append(ablated)
+    return SubgraphSet(
+        subject_ids=subgraphs.subject_ids,
+        graphs=tuple(stripped),
+        fingerprint=f"edges-ablated:{subgraphs.fingerprint}",
+    )
+
+
 def fingerprint(
     records: SubjectRecords, contract: FeatureContract, options: BuildOptions
 ) -> str:
