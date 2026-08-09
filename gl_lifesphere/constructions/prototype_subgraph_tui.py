@@ -267,7 +267,7 @@ def encoder_probe(data: HeteroData, *, d: int = 8) -> tuple[str, torch.Tensor | 
 @dataclass
 class State:
     cursor: int = 0
-    split_primary: bool = False
+    split_primary: bool = True
     reverse_edges: bool = True
     dedupe_conditions: bool = True
     view: str = "graph"  # graph | features | contract

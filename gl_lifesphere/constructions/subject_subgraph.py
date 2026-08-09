@@ -288,7 +288,7 @@ def build_subgraph(
     contract: FeatureContract,
     *,
     blocks: FeatureBlocks | None = None,
-    split_primary_relation: bool = False,
+    split_primary_relation: bool = True,
     add_reverse_edges: bool = True,
     dedupe_conditions: bool = True,
 ) -> HeteroData:
@@ -301,6 +301,19 @@ def build_subgraph(
     so this is the only edge-attribute decision the clinical-only graph will
     ever force, and splitting removes the need for any layer that takes
     `edge_attr` at all.
+
+    **It defaults on because the unsplit form measurably damages stage.** A
+    secondary Diagnosis usually records no stage, so it takes the contract's
+    training-fold within-Study median (#4 §3) — it arrives not empty but
+    confidently average. Under one relation the root then mean-aggregates the
+    primary together with 0–4 such nodes, and 37.3% of the cohort is
+    multi-Diagnosis: measured over all 6,808 Subjects with a primary, the
+    Diagnosis-set mean sits 0.35 sd away from the primary's own stage for those
+    Subjects (max 2.47 sd; 616 Subjects beyond 0.5 sd, 121 beyond 1.0). Stage is
+    the strongest prognostic feature in the study at HR 1.68 per level (#4 §3),
+    so that is a quiet, one-directional shrink toward the Study median on the
+    one feature the graph arm can least afford to blunt. Two relations let the
+    encoder weight the primary separately and recover it.
 
     `add_reverse_edges=False` exists to be run, once, and seen to fail: it is
     the encoder doc §2.1 bug in its exact form, and the point of building it is
@@ -431,7 +444,7 @@ def check_subgraph(
     contract: FeatureContract,
     *,
     blocks: FeatureBlocks | None = None,
-    split_primary_relation: bool = False,
+    split_primary_relation: bool = True,
     add_reverse_edges: bool = True,
 ) -> list[Check]:
     """Every property #11 asks to be asserted rather than eyeballed."""
