@@ -16,8 +16,13 @@ only, no molecular data") allows:
 - **`p_*` (Sample-type proportions) excluded.** #4 §4 states explicitly that
   arms 2 and 3 carry that ascertainment channel and "arm 1 does not" — it is
   a specimen-composition signal, not a staging/pathology one.
-- **`condition_*` (`conditionName`) excluded — a judgement call, not a direct
-  reading of #4.** #4 §6's general contract keeps `Condition` for every arm
+- **`condition_*` excluded — a judgement call, not a direct reading of #4.**
+  (Read `conditionName` for `conditionId` throughout this paragraph: the
+  measurement below was run before #12 re-keyed the feature on identity. The
+  exclusion only hardens — keying on `conditionId` raises R²_study from 0.772
+  to 0.948 and the level count from ~28 to 121, so both the collinearity
+  symptom and the parameter cost get worse, not better.)
+  #4 §6's general contract keeps `Condition` for every arm
   ("Condition and conditionSubtype are both kept, with Condition flagged"),
   reasoned safe there because the *headline* metric is immune to a pure
   Study proxy by construction. #8's own covariate enumeration for this arm,

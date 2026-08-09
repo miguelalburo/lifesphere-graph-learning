@@ -12,6 +12,25 @@ from held-out Subjects is the same class of leak).
 This is the one place both the tabular arm (#10) and the graph arm (#12) are
 required to call through (#10's own text: "Every feature must come from
 `gl_lifesphere/features/` ... any divergence is a bug in the comparison").
+
+**The `Condition` feature keys on `conditionId`, amending #4 §2 (resolved on
+#12, 2026-08-09).** §2 locked the feature as `conditionName`, on the premise
+that it is a 173-level cancer-type vocabulary. #11's prototype found it is not:
+173 Condition nodes carry 173 distinct `conditionId` but only 54 distinct
+`conditionName`, and `ICD10:C22.0` — liver, and the Condition of all 366 cohort
+TCGA-LIHC Subjects — is labelled "Malignant melanoma, NOS". Keying on the name
+merges across anatomy, so the node's feature is keyed on its actual identity
+instead. Schema fidelity was chosen over #4's alternative recommendation to
+drop the node, on the understanding that this is the *more* severe cancer-type
+channel of the two — **R²_study = 0.948** against 0.793 for `conditionSubtype`,
+the highest measured anywhere in this project, with 108 of 121 cohort
+`conditionId` values sitting in exactly one Study. That flag is carried in
+arm 3's config and results rather than left here.
+
+The within-Study headline metric is immune to it by construction (#4 §6: a
+feature near-constant within a stratum cannot reorder within-Study pairs, and
+the stratified loss absorbs it into the baseline hazard). The pooled secondaries
+are the exposed numbers and must be read knowing `Condition` ≈ Study.
 """
 
 from __future__ import annotations
@@ -35,12 +54,12 @@ _RACE_OTHER = frozenset(
 )
 
 # `conditionSubtype`: training-fold n < 20 lumped to `__RARE__` (#4 §3, measured
-# threshold). `conditionName` gets the same machinery with no lumping floor —
-# #4 keeps it un-lumped ("flagged: ~= a relabelling of Study") but any category
+# threshold). `Condition` gets the same machinery with no lumping floor — #4
+# keeps it un-lumped ("flagged: ~= a relabelling of Study") but any category
 # that never appears in a training fold still needs a defined home at transform
 # time, which `__RARE__` supplies either way.
 _CONDITION_SUBTYPE_MIN_COUNT = 20
-_CONDITION_NAME_MIN_COUNT = 1
+_CONDITION_MIN_COUNT = 1
 
 
 @dataclass(frozen=True)
@@ -67,7 +86,9 @@ class _CategoricalEncoder:
         folded = series.where(~series.isin(fixed_fold), "other")
         counts = folded.dropna().value_counts()
         kept = tuple(sorted(counts[counts >= min_count].index.tolist()))
-        return cls(column=column, prefix=prefix, categories=kept, fixed_fold=fixed_fold)
+        fitted = cls(column=column, prefix=prefix, categories=kept, fixed_fold=fixed_fold)
+        fitted._assert_slugs_are_injective()
+        return fitted
 
     @property
     def output_columns(self) -> list[str]:
@@ -75,7 +96,37 @@ class _CategoricalEncoder:
 
     @staticmethod
     def _slug(level: str) -> str:
-        return level.strip().lower().replace(" ", "_").replace("-", "_")
+        """A column name, with everything a downstream library reads as syntax removed.
+
+        `conditionId` values are ICD-10 codes (`ICD10:C22.0`), and a `:` or a
+        `.` in a column name reads as a namespace or an attribute access in the
+        formula-style interfaces this design matrix passes through. The
+        replacement is deliberately lossy, which is what
+        `_assert_slugs_are_injective` guards.
+        """
+        collapsed = level.strip().lower()
+        return "".join(character if character.isalnum() else "_" for character in collapsed)
+
+    def _assert_slugs_are_injective(self) -> None:
+        """Raise unless every category still has its own column after slugging.
+
+        The Condition vocabulary keys on `conditionId` precisely because
+        `conditionName` merged 173 identities into 54 (#4 §2's amendment). A
+        slug collision would re-create that merge one layer further down, and
+        silently — two categories would share a column and the second would
+        overwrite the first. Cheap to check once per fit; impossible to spot
+        afterwards.
+        """
+        slugs = [self._slug(level) for level in self.categories]
+        collided = sorted({slug for slug in slugs if slugs.count(slug) > 1})
+        if collided:
+            offenders = {
+                slug: sorted(c for c in self.categories if self._slug(c) == slug)
+                for slug in collided
+            }
+            raise AssertionError(
+                f"{self.column}: distinct categories share a column slug: {offenders}"
+            )
 
     def transform(self, series: pd.Series) -> pd.DataFrame:
         folded = series.where(~series.isin(self.fixed_fold), "other")
@@ -198,7 +249,7 @@ class FeatureContract:
     sex: _BinaryEncoder
     race: _CategoricalEncoder
     condition_subtype: _CategoricalEncoder
-    condition_name: _CategoricalEncoder
+    condition: _CategoricalEncoder
     stage: _NumericEncoder
     age: _NumericEncoder
     sample_proportions: _ProportionEncoder
@@ -223,7 +274,7 @@ class FeatureContract:
             self.stage.transform(frame["stageOrdinal"], study),
             self.age.transform(age_source, study),
             self.condition_subtype.transform(frame["conditionSubtype"]),
-            self.condition_name.transform(frame["conditionName"]),
+            self.condition.transform(frame["conditionId"]),
             self.sample_proportions.transform(frame),
         ]
         design = pd.concat(blocks, axis=1)
@@ -241,7 +292,7 @@ class FeatureContract:
             *self.stage.output_columns,
             *self.age.output_columns,
             *self.condition_subtype.output_columns,
-            *self.condition_name.output_columns,
+            *self.condition.output_columns,
             *self.sample_proportions.output_columns,
         ]
 
@@ -269,11 +320,11 @@ def fit_feature_contract(raw_frame: pd.DataFrame, train_subject_ids: frozenset[s
             prefix="subtype",
             min_count=_CONDITION_SUBTYPE_MIN_COUNT,
         ),
-        condition_name=_CategoricalEncoder.fit(
-            train["conditionName"],
-            column="conditionName",
+        condition=_CategoricalEncoder.fit(
+            train["conditionId"],
+            column="conditionId",
             prefix="condition",
-            min_count=_CONDITION_NAME_MIN_COUNT,
+            min_count=_CONDITION_MIN_COUNT,
         ),
         stage=_NumericEncoder.fit(train["stageOrdinal"], study, column="stageOrdinal"),
         age=_NumericEncoder.fit(age_source, study, column="ageAtDiagnosisYears"),

@@ -43,7 +43,7 @@ def synthetic_cohort() -> tuple[pd.DataFrame, SurvivalTarget, FoldSplit]:
             "stageOrdinal": stage,
             "ageAtDiagnosisYears": age,
             "conditionSubtype": rng.choice(["subtype-1", "subtype-2"], size=n),
-            "conditionName": rng.choice(["condition-1", "condition-2"], size=n),
+            "conditionId": rng.choice(["ICD10:C50.9", "ICD10:C43.9"], size=n),
             "p_primary_tumor": proportions[:, 0],
             "p_blood_derived_normal": proportions[:, 1],
             "p_solid_tissue_normal": proportions[:, 2],

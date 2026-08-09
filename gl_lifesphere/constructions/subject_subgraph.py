@@ -21,6 +21,14 @@ Subject's own two demographic fields (encoder doc §2.1). Reverse edges are adde
 by default and `messages_reaching_root` measures the property directly rather
 than trusting the transform.
 
+**`Condition` keys on `conditionId`, amending #4 §2 (resolved on #12).** The
+node stays — schema fidelity is the point of this construction — but its only
+feature is its identity rather than the corrupt `conditionName`
+(`check_condition_vocabulary`). It is the most severe cancer-type channel in
+the project at R²_study = 0.948, which the within-Study headline metric is
+immune to by construction and the pooled secondaries are not; arm 3's config
+carries the flag.
+
 **Features come from the shared contract, never from a second encoding.** The
 same fitted `FeatureContract` the flattened arm calls (#4 §2: "there is no
 encoding difference between the arms to negotiate") is sliced into per-node-type
@@ -124,7 +132,7 @@ class FeatureBlocks:
                 *contract.age.output_columns,
                 *contract.condition_subtype.output_columns,
             ),
-            condition=tuple(contract.condition_name.output_columns),
+            condition=tuple(contract.condition.output_columns),
             sample=tuple(contract.sample_proportions.output_columns),
             pathology=(),
         )
@@ -222,14 +230,20 @@ def _condition_nodes(record: SubjectRecord, *, dedupe: bool) -> pd.DataFrame:
     Diagnosis (#4 §5), so this only ever merges across Diagnoses, never within.
     """
     linked = record.diagnoses.dropna(subset=["conditionId"])
-    nodes = linked[["conditionId", "conditionName"]]
+    nodes = linked[["conditionId"]]
     if dedupe:
         nodes = nodes.drop_duplicates(subset=["conditionId"])
     return nodes.reset_index(drop=True)
 
 
 def _condition_features(nodes: pd.DataFrame, contract: FeatureContract) -> torch.Tensor:
-    return _to_tensor(contract.condition_name.transform(nodes["conditionName"]))
+    """A lookup of the Condition's identity — encoder doc §1's `Embedding(m, d)`.
+
+    Keyed on `conditionId` rather than `conditionName`, amending #4 §2: the name
+    is corrupt on the live graph and would hand anatomically distinct Conditions
+    the identical embedding row (`check_condition_vocabulary` is the measurement).
+    """
+    return _to_tensor(contract.condition.transform(nodes["conditionId"]))
 
 
 def _sample_nodes(record: SubjectRecord) -> pd.DataFrame:
@@ -574,7 +588,12 @@ def _check_sample_mean_matches_contract(
     return name, delta < 1e-5, f"max |graph mean - contract row| = {delta:.2e}"
 
 
-def check_condition_vocabulary(diagnoses: pd.DataFrame) -> list[Check]:
+CONDITION_FEATURE_KEY = "conditionId"
+
+
+def check_condition_vocabulary(
+    diagnoses: pd.DataFrame, *, feature_key: str = CONDITION_FEATURE_KEY
+) -> list[Check]:
     """Cohort-level: is the Condition node's only feature faithful to its identity?
 
     Not a per-subgraph property — every Subject has at most one Condition (#4 §1
@@ -582,22 +601,28 @@ def check_condition_vocabulary(diagnoses: pd.DataFrame) -> list[Check]:
     single rooted subgraph can reveal that the vocabulary is collapsing. It has
     to be asked of the whole cohort at once.
 
-    #4 §2 locks the Condition node's feature to `conditionName`, and its
-    identity is `conditionId`. If several `conditionId`s share a `conditionName`
-    then the type-specific projection `f_Condition` hands anatomically distinct
-    Conditions the identical embedding row, and the node type is carrying less
-    than its cardinality suggests.
+    A Condition node's identity is its `conditionId`. If several `conditionId`s
+    share a value of `feature_key`, then the type-specific projection
+    `f_Condition` hands anatomically distinct Conditions the identical embedding
+    row, and the node type carries less than its cardinality suggests.
+
+    **This is the check that found the bug, and it still fails on demand.** #4 §2
+    originally locked the feature to `conditionName`; passing `conditionName`
+    here reproduces the finding — 121 cohort `conditionId`s collapsing to 28
+    names, `"Malignant melanoma, NOS"` sitting on 32 ICD-10 codes across 4
+    Studies — which is why the feature now keys on `conditionId` and this check
+    is a live guard rather than a historical note.
     """
     linked = diagnoses.dropna(subset=["conditionId"])
-    per_name = linked.groupby("conditionName")["conditionId"].nunique().sort_values(ascending=False)
-    collapsed = per_name[per_name > 1]
-    worst = ", ".join(f"{name!r} ← {n} codes" for name, n in per_name.head(3).items())
+    per_value = linked.groupby(feature_key)["conditionId"].nunique().sort_values(ascending=False)
+    collapsed = per_value[per_value > 1]
+    worst = ", ".join(f"{value!r} ← {n} codes" for value, n in per_value.head(3).items())
     return [
         Check(
-            "conditionName distinguishes every Condition node identity",
+            f"{feature_key} distinguishes every Condition node identity",
             collapsed.empty,
             f"{int(linked['conditionId'].nunique())} conditionIds collapse to "
-            f"{int(linked['conditionName'].nunique())} conditionNames; worst: {worst}",
+            f"{int(linked[feature_key].nunique())} {feature_key} values; worst: {worst}",
         )
     ]
 

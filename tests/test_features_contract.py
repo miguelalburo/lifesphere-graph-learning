@@ -21,7 +21,13 @@ from gl_lifesphere.features import contract
 from gl_lifesphere.features.raw import SAMPLE_PROPORTION_COLUMNS
 
 
-def _row(subject: str, study: str, *, subtype: str = "Common", condition: str = "COND-A") -> dict[str, object]:
+def _row(
+    subject: str,
+    study: str,
+    *,
+    subtype: str = "Common",
+    condition: str = "ICD10:C00.9",
+) -> dict[str, object]:
     row: dict[str, object] = {
         "subjectId": subject,
         "studyId": study,
@@ -31,7 +37,7 @@ def _row(subject: str, study: str, *, subtype: str = "Common", condition: str = 
         "stageOrdinal": 2,
         "ageAtDiagnosisYears": 55.0,
         "conditionSubtype": subtype,
-        "conditionName": condition,
+        "conditionId": condition,
     }
     for i, column in enumerate(SAMPLE_PROPORTION_COLUMNS):
         row[column] = 1.0 if i == 0 else 0.0
@@ -86,11 +92,67 @@ class TestNoLeakage:
         assert set(design.index) == set(raw_frame["subjectId"])
 
 
+class TestConditionKeyedOnIdentity:
+    """#4 §2's amendment: the Condition feature keys on `conditionId`, not `conditionName`.
+
+    `conditionName` is corrupt on the live graph — 173 Condition nodes carry
+    173 distinct `conditionId` but only 54 distinct `conditionName`, and
+    `ICD10:C22.0` (liver) is labelled "Malignant melanoma, NOS". Keying on the
+    name therefore hands anatomically distinct Conditions the identical column,
+    which is a silent merge rather than a loud failure — so it is pinned here.
+    """
+
+    def test_distinct_condition_ids_get_distinct_columns(self) -> None:
+        rows = [_row(f"S{i:02d}", "STUDY-A", condition="ICD10:C22.0") for i in range(10)]
+        rows += [_row(f"T{i:02d}", "STUDY-A", condition="ICD10:C43.9") for i in range(10)]
+        frame = pd.DataFrame(rows)
+        fitted = contract.fit_feature_contract(frame, frozenset(frame["subjectId"]))
+
+        design = fitted.transform(frame)
+        condition_columns = [c for c in design.columns if c.startswith("condition_")]
+        # Two ids, plus the __RARE__ and __MISSING__ homes every vocabulary carries.
+        assert len(condition_columns) == 4
+        condition_block = design[condition_columns]
+        liver = condition_block.loc["S00"].to_numpy()
+        melanoma = condition_block.loc["T00"].to_numpy()
+        assert not (liver == melanoma).all()
+
+    def test_the_encoder_never_reads_conditionname(self) -> None:
+        """Two Conditions sharing the corrupt name must still separate."""
+        rows = [_row(f"S{i:02d}", "STUDY-A", condition="ICD10:C22.0") for i in range(10)]
+        rows += [_row(f"T{i:02d}", "STUDY-A", condition="ICD10:C43.9") for i in range(10)]
+        frame = pd.DataFrame(rows)
+        frame["conditionName"] = "Malignant melanoma, NOS"  # the live graph's collapse
+
+        fitted = contract.fit_feature_contract(frame, frozenset(frame["subjectId"]))
+        assert set(fitted.condition.categories) == {"ICD10:C22.0", "ICD10:C43.9"}
+
+    def test_column_names_survive_the_icd10_punctuation(self) -> None:
+        frame = pd.DataFrame([_row(f"S{i:02d}", "STUDY-A", condition="ICD10:C22.0") for i in range(5)])
+        fitted = contract.fit_feature_contract(frame, frozenset(frame["subjectId"]))
+        columns = fitted.condition.output_columns
+        # `:` and `.` would make a column name that reads as a namespace or an
+        # attribute access in the several libraries this frame passes through.
+        assert "condition_icd10_c22_0" in columns
+        assert all(":" not in c and "." not in c for c in columns)
+
+    def test_slugging_two_ids_onto_one_column_fails_loudly(self) -> None:
+        """The slug is lossy, so it must not be able to re-create the very
+        collapse this amendment exists to remove."""
+        with pytest.raises(AssertionError, match="slug"):
+            contract._CategoricalEncoder.fit(
+                pd.Series(["ICD10:C22.0", "ICD10-C22-0"]),
+                column="conditionId",
+                prefix="condition",
+                min_count=1,
+            )
+
+
 class TestBaselineSubset:
     """The columns arm 1 (#9) is allowed to use: everything except Condition
-    (`conditionName`, flagged in #4 §6 as close to a relabelling of Study) and
-    Sample-type proportions (#4 §4: arm 1 does not carry that ascertainment
-    channel)."""
+    (`conditionId`, flagged in #4 §6 as close to a relabelling of Study — and
+    measured at R²_study = 0.948 once keyed on identity) and Sample-type
+    proportions (#4 §4: arm 1 does not carry that ascertainment channel)."""
 
     def test_excludes_condition_and_sample_proportion_columns(self, raw_frame: pd.DataFrame) -> None:
         from gl_lifesphere.models.baseline.train import baseline_columns

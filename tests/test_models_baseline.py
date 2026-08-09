@@ -80,7 +80,7 @@ def _synthetic_raw_and_targets(seed: int = 0) -> tuple[pd.DataFrame, SurvivalTar
             "stageOrdinal": stage,
             "ageAtDiagnosisYears": age,
             "conditionSubtype": subtype,
-            "conditionName": condition,
+            "conditionId": condition,
         }
     )
     for i, column in enumerate(SAMPLE_PROPORTION_COLUMNS):

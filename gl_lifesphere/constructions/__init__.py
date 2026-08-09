@@ -10,8 +10,11 @@ genomic kind — per-loci Variant / MutationCall.)
 
 Planned/known constructions:
 
-- `subject_subgraph`  One PyG `Data` object per Subject (graph-level
+- `subject_subgraph`  One rooted PyG `HeteroData` per Subject (graph-level
   regression). Buildable on the clinical-only schema; thin until omics lands.
+  `cache` is its build-and-persist wrapper — the builder stays a pure function
+  of its inputs, and everything about slicing, ordering and invalidation lives
+  beside it rather than inside it.
 - `similarity`        One cohort- or Study-level patient similarity network,
   Subjects as nodes (node-level regression).
 - `hetero`            The full multi-label schema as `HeteroData`, node types

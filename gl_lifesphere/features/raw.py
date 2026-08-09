@@ -26,13 +26,21 @@ from ..extract.store import INTERIM_DIR, PROCESSED_DIR, read_table
 # `nDiagnoses`, `hasPrimaryDiagnosis`, `primaryDiagnosisId` — is excluded here
 # rather than dropped downstream, so a leaking column can never reach the
 # contract by accident (#4 §2, §3, §4).
+#
+# `conditionId`, not `conditionName`: the name is corrupt on the live graph and
+# merges across anatomy, so the Condition feature keys on the node's actual
+# identity (see `contract.py`'s docstring for the amendment and its evidence).
+# `conditionName` is left out entirely rather than carried unused — the whole
+# point of this list is that a column the contract must not read cannot reach
+# it by accident. `constructions.subject_subgraph.check_condition_vocabulary`
+# reads the interim `diagnoses` table directly for the evidence.
 _SUBJECT_COLUMNS = ["subjectId", "sexAtBirth", "race", "ageAtIndexYears"]
 _DIAGNOSIS_COLUMNS = [
     "subjectId",
     "stageOrdinal",
     "ageAtDiagnosisYears",
     "conditionSubtype",
-    "conditionName",
+    "conditionId",
 ]
 
 SAMPLE_PROPORTION_COLUMNS: tuple[str, ...] = tuple(

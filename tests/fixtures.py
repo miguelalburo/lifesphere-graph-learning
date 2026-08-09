@@ -18,6 +18,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+import pandas as pd
+
 
 def raw_subjects() -> list[dict[str, Any]]:
     """Subjects as the driver returns them: every value a string or None.
@@ -290,3 +293,142 @@ RAW_PULLS = {
     "samples": raw_samples,
     "pathology_details": raw_pathology_details,
 }
+
+
+# ---------------------------------------------------------------------------
+# A synthetic cohort, shaped like `data/interim/` (#12)
+# ---------------------------------------------------------------------------
+#
+# The raw pulls above are four Subjects chosen to carry specific traps, which is
+# right for the extract layer and far too small for anything that fits a feature
+# contract or trains an encoder. This builds a cohort of the same *shape* — the
+# interim tables, already cast — big enough that vocabularies, medians and
+# standardisation constants are meaningful, while staying small enough to run in
+# a test.
+#
+# It carries the structural shapes #11 asks the construction to handle: a
+# Subject with no Diagnosis at all, one whose Diagnosis has no `OF_CONDITION`,
+# one with several Diagnoses, one with no PathologyDetail, and post-baseline
+# `sampleType` rows that #4 §4 excludes as nodes. It also reproduces the
+# `conditionName` collapse: distinct `conditionId` values sharing one name.
+
+SYNTHETIC_STUDIES = ("STUDY-A", "STUDY-B", "STUDY-C")
+SYNTHETIC_BASELINE_TYPES = ("Primary Tumor", "Blood Derived Normal", "Solid Tissue Normal")
+
+NO_DIAGNOSIS = "SUBJ-000"
+NO_CONDITION = "SUBJ-001"
+MANY_DIAGNOSES = "SUBJ-002"
+NO_PATHOLOGY = "SUBJ-003"
+
+
+def synthetic_interim(n_per_study: int = 20) -> dict[str, pd.DataFrame]:
+    """`members` / `subjects` / `diagnoses` / `samples` / `pathology_details`."""
+
+    subject_ids = [f"SUBJ-{i:03d}" for i in range(n_per_study * len(SYNTHETIC_STUDIES))]
+    studies = [SYNTHETIC_STUDIES[i // n_per_study] for i in range(len(subject_ids))]
+
+    subjects = pd.DataFrame(
+        {
+            "subjectId": subject_ids,
+            "studyId": studies,
+            "sexAtBirth": ["male" if i % 2 else "female" for i in range(len(subject_ids))],
+            "race": ["white" if i % 3 else "asian" for i in range(len(subject_ids))],
+            "ethnicity": [None] * len(subject_ids),
+            "ageAtIndexYears": [50.0 + (i % 30) for i in range(len(subject_ids))],
+        }
+    )
+
+    diagnosis_rows: list[dict[str, Any]] = []
+    pathology_rows: list[dict[str, Any]] = []
+    sample_rows: list[dict[str, Any]] = []
+
+    for i, subject in enumerate(subject_ids):
+        if subject != NO_DIAGNOSIS:
+            n_diagnoses = 3 if subject == MANY_DIAGNOSES else 1 + (i % 2)
+            for k in range(n_diagnoses):
+                diagnosis_id = f"DIAG-{i:03d}-{k}"
+                primary = k == 0
+                has_condition = primary and subject != NO_CONDITION
+                diagnosis_rows.append(
+                    {
+                        "diagnosisId": diagnosis_id,
+                        "subjectId": subject,
+                        "isPrimaryDiagnosis": primary,
+                        "pathologicStageRaw": f"Stage {'I' * (1 + i % 4)}",
+                        # A secondary Diagnosis usually records no stage (#11).
+                        "stageOrdinal": float(1 + i % 4) if primary else None,
+                        "ageAtDiagnosisYears": 50.0 + (i % 30),
+                        "conditionSubtype": f"subtype-{i % 4}",
+                        "diagnosisMethod": None,
+                        # `OF_CONDITION` exists only on primary Diagnoses (#4 §1).
+                        "conditionId": f"ICD10:C{i % 5:02d}.9" if has_condition else None,
+                        # The live graph's collapse: distinct ids, one name.
+                        "conditionName": "Malignant melanoma, NOS" if has_condition else None,
+                    }
+                )
+                if subject != NO_PATHOLOGY:
+                    for p in range(1 + (i % 2)):
+                        pathology_rows.append(
+                            {
+                                "pathologyDetailId": f"PATH-{i:03d}-{k}-{p}",
+                                "diagnosisId": diagnosis_id,
+                                "subjectId": subject,
+                                "necrosisPercent": None,
+                            }
+                        )
+
+        for s in range(3 + (i % 4)):
+            sample_rows.append(
+                {
+                    "sampleId": f"SAMP-{i:03d}-{s}",
+                    "subjectId": subject,
+                    "sampleType": (
+                        "Metastatic"
+                        if s == 0 and i % 4 == 0
+                        else SYNTHETIC_BASELINE_TYPES[s % len(SYNTHETIC_BASELINE_TYPES)]
+                    ),
+                    "sampleClass": "Tumor",
+                    "preservationMethod": None,
+                    "daysToCollection": None,
+                }
+            )
+
+    return {
+        "members": pd.DataFrame({"subjectId": subject_ids, "studyId": studies}),
+        "subjects": subjects,
+        "diagnoses": pd.DataFrame(diagnosis_rows),
+        "samples": pd.DataFrame(sample_rows),
+        "pathology_details": pd.DataFrame(pathology_rows),
+    }
+
+
+def synthetic_survival(interim: dict[str, pd.DataFrame], *, seed: int = 0) -> pd.DataFrame:
+    """Labels for `synthetic_interim`, with a genuine (if weak) stage signal.
+
+    Higher stage -> shorter time, so a working pipeline scores above 0.5 and a
+    sign-inverted one is visible rather than merely noisy. Scaled to thousands
+    of days like the real cohort's `timeToEventDays`, so the locked 1/2/3-year
+    horizons fall inside this cohort's follow-up range.
+    """
+    rng = np.random.default_rng(seed)
+    members = interim["members"]
+    primary = interim["diagnoses"][interim["diagnoses"]["isPrimaryDiagnosis"].fillna(False)]
+    stage = (
+        members.merge(primary[["subjectId", "stageOrdinal"]], on="subjectId", how="left")[
+            "stageOrdinal"
+        ]
+        .fillna(2.0)
+        .to_numpy(dtype="float64")
+    )
+
+    risk = 0.6 * stage
+    latent = rng.exponential(scale=np.exp(-risk) * 8000.0)
+    censor = rng.exponential(scale=4000.0, size=len(members))
+    return pd.DataFrame(
+        {
+            "subjectId": members["subjectId"],
+            "studyId": members["studyId"],
+            "durationDays": np.ceil(np.minimum(latent, censor)) + 1.0,
+            "event": latent <= censor,
+        }
+    )

@@ -22,12 +22,15 @@ from __future__ import annotations
 
 from . import decoder, losses, metrics
 from .targets import SurvivalTarget, load_survival_frame, load_targets
+from .two_stage import TwoStageResult, two_stage_score
 
 __all__ = [
     "SurvivalTarget",
+    "TwoStageResult",
     "decoder",
     "load_survival_frame",
     "load_targets",
     "losses",
     "metrics",
+    "two_stage_score",
 ]

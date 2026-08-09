@@ -15,7 +15,6 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field, fields
 
-import numpy as np
 import pandas as pd
 import torch
 
@@ -23,6 +22,7 @@ from ...evaluation.splits import FoldSplit, fold_split, load_folds
 from ...features import FeatureContract, assemble_raw_frame, fit_feature_contract
 from ...survival import decoder, losses, metrics
 from ...survival.targets import SurvivalTarget, load_targets
+from ...survival.two_stage import TwoStageResult, two_stage_score
 from .network import TabularEncoder
 
 
@@ -133,14 +133,6 @@ def _embed(model: TabularEncoder, x: pd.DataFrame) -> pd.DataFrame:
 
 
 @dataclass(frozen=True)
-class TwoStageResult:
-    """One pass of stage two: select `lambda`, fit the shared decoder, score it."""
-
-    penalty_selection: decoder.PenaltySelection
-    fold_metrics: metrics.FoldMetrics
-
-
-@dataclass(frozen=True)
 class FoldResult:
     fold: int
     config: TabularArmConfig
@@ -197,66 +189,6 @@ def _design_and_target(
 ) -> tuple[pd.DataFrame, SurvivalTarget]:
     design = contract.transform(raw, subject_ids)
     return design, targets.reorder(design.index)
-
-
-def _two_stage_score(
-    *,
-    z_train: pd.DataFrame,
-    train_target: SurvivalTarget,
-    z_trainval: pd.DataFrame,
-    trainval_target: SurvivalTarget,
-    z_test: pd.DataFrame,
-    test_target: SurvivalTarget,
-    penalty_grid: tuple[float, ...],
-    where: str,
-) -> TwoStageResult:
-    """Stage two, given a (frozen, already-embedded) `z`: select `lambda`, fit, score.
-
-    Shared by the primary trained-encoder pass and the random-init-encoder
-    diagnostic (#3 §3) — both are "extract `z`, then pass it through the
-    identical shared decoder", differing only in where `z` came from.
-    """
-    selection = decoder.select_penalty(
-        z_train,
-        train_study=train_target.study,
-        train_time=train_target.time,
-        train_event=train_target.event,
-        trainval=z_trainval,
-        trainval_study=trainval_target.study,
-        trainval_time=trainval_target.time,
-        trainval_event=trainval_target.event,
-        grid=penalty_grid,
-    )
-
-    fit = decoder.fit_decoder(
-        z_trainval,
-        study=trainval_target.study,
-        time=trainval_target.time,
-        event=trainval_target.event,
-        penalizer=selection.chosen_penalizer,
-    )
-
-    # #3 §6: every arm must self-check its training-fold score before trusting
-    # the held-out one — a sign-inverted risk silently produces `1 - C`.
-    train_risk = decoder.risk_scores(fit, z_trainval, study=trainval_target.study)
-    metrics.assert_discriminates(trainval_target.event, trainval_target.time, train_risk, where=where)
-
-    test_risk = decoder.risk_scores(fit, z_test, study=test_target.study)
-    horizons = metrics.DEFAULT_HORIZONS_DAYS
-    test_survival = decoder.survival_function(
-        fit, z_test, study=test_target.study, times=np.asarray(horizons)
-    )
-    fold_metrics = metrics.score_fold(
-        train_time=trainval_target.time,
-        train_event=trainval_target.event,
-        test_time=test_target.time,
-        test_event=test_target.event,
-        test_study=test_target.study,
-        risk=test_risk,
-        survival_probabilities=test_survival,
-        horizons=horizons,
-    )
-    return TwoStageResult(penalty_selection=selection, fold_metrics=fold_metrics)
 
 
 def _end_to_end_score(
@@ -320,7 +252,7 @@ def run_fold(
     z_trainval = _embed(encoder_fit.model, x_trainval)
     z_test = _embed(encoder_fit.model, x_test)
 
-    primary = _two_stage_score(
+    primary = two_stage_score(
         z_train=z_train,
         train_target=train_target,
         z_trainval=z_trainval,
@@ -335,7 +267,7 @@ def run_fold(
     random_model = TabularEncoder(
         input_dim=x_train.shape[1], hidden_dims=config.hidden_dims, d=config.d, dropout=config.dropout
     ).eval()
-    random_init = _two_stage_score(
+    random_init = two_stage_score(
         z_train=_embed(random_model, x_train),
         train_target=train_target,
         z_trainval=_embed(random_model, x_trainval),
