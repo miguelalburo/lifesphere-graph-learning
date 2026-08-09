@@ -15,19 +15,28 @@ next to `build_subgraph`'s — and the one thing this project cannot afford is t
 routes to a design matrix that are supposed to agree. Rebuilding the whole graph
 per fold keeps exactly one.
 
-**Invalidation is by fingerprint, not by mtime.** The manifest records a hash
-over the Subject set, the build options, the fitted contract's full `repr`
-(every vocabulary, median and standardisation constant, so a refit on different
-Subjects misses), and the source of `subject_subgraph.py` itself (so editing the
-builder misses). A stale read is the failure mode that matters here: it would
-silently train on features from a previous fold's contract, which is a leak that
-produces a plausible number rather than an exception.
+**Invalidation is by fingerprint, not by mtime.** The key hashes the Subject
+set, the build options, the fitted contract in full (every vocabulary, median
+and standardisation constant, so a refit on different Subjects misses), and the
+source of `subject_subgraph.py` itself (so editing the builder misses). A stale
+read is the failure mode that matters: it would silently train on features from
+a previous fold's contract, a leak that produces a plausible number rather than
+an exception.
+
+The contract is rendered by `_canonical_json` rather than `repr`, because the
+opposite failure is just as quiet. `FeatureContract` carries a `frozenset`, and
+set iteration order depends on Python's per-process hash randomisation — so a
+`repr`-based key changes between runs of identical code on identical data, and
+the cache then misses every single time while still behaving like a cache.
+Nothing fails and the numbers stay right; the only symptom is that every run
+pays the full rebuild.
 """
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -104,7 +113,8 @@ class SubjectRecords:
             pathology=self.pathology.get(subject_id, self.empty_pathology),
         )
 
-    def fingerprint(self) -> str:
+    def roster_digest(self) -> str:
+        """A hash of the Subject roster alone — one input to `fingerprint`, not it."""
         return _digest("|".join(self.subject_ids))
 
 
@@ -253,13 +263,47 @@ def fingerprint(
     return _digest(
         "\n".join(
             [
-                records.fingerprint(),
-                repr(sorted(options.as_dict().items())),
-                repr(contract),
+                records.roster_digest(),
+                _canonical_json(options.as_dict()),
+                _canonical_json(contract),
                 hashlib.sha256(builder_source).hexdigest(),
             ]
         )
     )
+
+
+def _canonical_json(value: object) -> str:
+    """A stable string for any fitted-encoder tree, safe to hash across processes.
+
+    **Not `repr`, and that distinction is load-bearing.** `FeatureContract`
+    carries a `frozenset` (race's fixed fold), and the iteration order of a set
+    of strings depends on Python's per-process hash randomisation — so
+    `repr(contract)` differs between runs of the same code on the same data.
+    A fingerprint built from it changes on most restarts, and the cache then
+    misses every time while still *looking* like a working cache: nothing fails,
+    the numbers stay correct, and the only symptom is that every run silently
+    pays the full rebuild. Sets are sorted here, and floats go through `repr` so
+    they round-trip exactly rather than through JSON's shortest representation.
+    """
+    return json.dumps(_canonical(value), sort_keys=True)
+
+
+def _canonical(value: object) -> object:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {field.name: _canonical(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, (frozenset, set)):
+        # Canonicalise first, then sort the *rendered* elements, so a set of
+        # mixed or non-comparable types still has one stable order.
+        return sorted(json.dumps(_canonical(item), sort_keys=True) for item in value)
+    if isinstance(value, dict):
+        return {str(key): _canonical(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical(item) for item in value]
+    if isinstance(value, float):
+        return repr(value)
+    if isinstance(value, (str, int, bool, type(None))):
+        return value
+    return repr(value)
 
 
 def cache_path(fold: int, *, directory: Path | None = None) -> Path:

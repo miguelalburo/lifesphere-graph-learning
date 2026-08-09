@@ -17,35 +17,12 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
-
 from ...extract.connection import REPO_ROOT
-from .train import FoldResult, GraphArmConfig, iter_folds
+from ..training import summarise_folds
+from .train import ARM, FoldResult, GraphArmConfig, iter_folds
 
 DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "arm3_graph.json"
 DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "arm3_graph"
-
-_SUMMARY_KEYS = (
-    "pooled_harrell_c",
-    "within_study_harrell_c",
-    "uno_c_ipcw",
-    "integrated_brier_score",
-)
-
-
-def _summarise(results: list[FoldResult]) -> dict[str, object]:
-    """Mean/std across folds for the headline metrics, plus the raw per-fold values."""
-    summary: dict[str, object] = {}
-    for key in _SUMMARY_KEYS:
-        values = [r.fold_metrics.to_dict()[key] for r in results]
-        present = [float(v) for v in values if isinstance(v, (int, float))]
-        summary[key] = {
-            "mean": float(np.mean(present)) if present else None,
-            "std": float(np.std(present)) if present else None,
-            "per_fold": values,
-        }
-    return summary
-
 
 def main(
     config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT, *, use_cache: bool = True
@@ -69,7 +46,11 @@ def main(
         )
         results.append(result)
 
-    summary = {"arm": "arm3_graph", "config": payload, "folds": _summarise(results)}
+    summary = {
+        "arm": ARM,
+        "config": payload,
+        "folds": summarise_folds([r.fold_metrics for r in results]),
+    }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
     return results
 

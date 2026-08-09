@@ -29,9 +29,8 @@ believable.
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Iterator
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -42,10 +41,29 @@ from ...constructions import cache
 from ...constructions.subject_subgraph import FeatureBlocks
 from ...evaluation.splits import N_SPLITS, FoldSplit, fold_split, load_folds
 from ...features import FeatureContract, assemble_raw_frame, fit_feature_contract
-from ...survival import decoder, losses, metrics
+from ...survival import decoder, metrics
 from ...survival.targets import SurvivalTarget, load_targets
 from ...survival.two_stage import TwoStageResult, two_stage_score
+from .. import training
+from ..training import EncoderFit
 from .network import SubjectSubgraphEncoder
+
+ARM = "arm3_graph"
+CONSTRUCTION = "subject_subgraph"
+
+# Travels with every recorded fold, not only the run summary. The fold files are
+# what name `pooled_harrell_c` and `uno_c_ipcw`, and those are precisely the
+# numbers this caveat governs — a flag that lives only in the summary is absent
+# from the artefact a reader actually quotes (#4 §2's amendment, #4 §6).
+CONDITION_FLAG = (
+    "The Condition node keys on conditionId (#4 §2's amendment, resolved on #12). "
+    "At R2_study = 0.948 it is the most severe cancer-type channel measured in "
+    "this project, with 108 of 121 cohort conditionId values in exactly one Study. "
+    "within_study_harrell_c is immune to it by construction (#4 §6): a feature "
+    "near-constant within a stratum cannot reorder within-Study pairs. "
+    "pooled_harrell_c and uno_c_ipcw are NOT immune and must be read knowing "
+    "Condition ~= Study."
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +84,10 @@ class GraphArmConfig:
     thing to check after the reverse edges, and checking it means running it.
     """
 
+    arm: str = ARM
+    construction: str = CONSTRUCTION
+    endpoint: str = training.LOCKED_ENDPOINT
+    split: str = field(default_factory=training.locked_split_name)
     d: int = 32
     num_layers: int = 2
     dropout: float = 0.2
@@ -82,8 +104,7 @@ class GraphArmConfig:
     def from_dict(cls, payload: dict[str, object]) -> "GraphArmConfig":
         """Ignores keys the dataclass does not declare (e.g. a `_comment`), so a
         documented config file need not be stripped before loading."""
-        known = {f.name for f in fields(cls)}
-        kwargs = {key: value for key, value in payload.items() if key in known}
+        kwargs = training.config_from_dict(cls, payload)
         if "penalty_grid" in kwargs:
             kwargs["penalty_grid"] = tuple(kwargs["penalty_grid"])  # type: ignore[arg-type]
         return cls(**kwargs)  # type: ignore[arg-type]
@@ -112,14 +133,6 @@ class SplitBatch:
 
     def __len__(self) -> int:
         return len(self.subject_ids)
-
-
-@dataclass(frozen=True)
-class EncoderFit:
-    model: SubjectSubgraphEncoder
-    train_loss_curve: tuple[float, ...]
-    val_loss_curve: tuple[float, ...]
-    best_epoch: int
 
 
 def collate(
@@ -158,50 +171,18 @@ def train_encoder(
     blocks: FeatureBlocks,
     *,
     config: GraphArmConfig,
-) -> EncoderFit:
+) -> EncoderFit[SubjectSubgraphEncoder]:
     """Full-batch Adam on the stratified Efron Cox loss, early-stopped on val loss."""
-    model = _new_encoder(train.batch, blocks, config=config)
-    optimiser = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
-
-    best_state = copy.deepcopy(model.state_dict())
-    best_val = float("inf")
-    best_epoch = 0
-    train_curve: list[float] = []
-    val_curve: list[float] = []
-
-    for epoch in range(config.max_epochs):
-        model.train()
-        optimiser.zero_grad()
-        train_risk = model(train.batch)
-        train_loss = losses.stratified_efron_cox_loss(
-            train_risk, train.target.time, train.target.event, train.target.study
-        )
-        train_loss.backward()
-        optimiser.step()
-        train_curve.append(train_loss.item())
-
-        model.eval()
-        with torch.no_grad():
-            val_risk = model(val.batch)
-            val_loss = losses.stratified_efron_cox_loss(
-                val_risk, val.target.time, val.target.event, val.target.study
-            )
-        val_curve.append(float(val_loss))
-
-        if val_curve[-1] < best_val:
-            best_val = val_curve[-1]
-            best_epoch = epoch
-            best_state = copy.deepcopy(model.state_dict())
-        elif epoch - best_epoch >= config.patience:
-            break
-
-    model.load_state_dict(best_state)
-    model.eval()
-    return EncoderFit(
-        model=model,
-        train_loss_curve=tuple(train_curve),
-        val_loss_curve=tuple(val_curve),
-        best_epoch=best_epoch,
+    return training.train_with_early_stopping(
+        _new_encoder(train.batch, blocks, config=config),
+        train_input=train.batch,
+        train_target=train.target,
+        val_input=val.batch,
+        val_target=val.target,
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+        max_epochs=config.max_epochs,
+        patience=config.patience,
     )
 
 
@@ -215,42 +196,12 @@ def _embed(model: SubjectSubgraphEncoder, split: SplitBatch) -> pd.DataFrame:
     )
 
 
-def _end_to_end_score(
-    model: SubjectSubgraphEncoder,
-    *,
-    trainval: SplitBatch,
-    test: SplitBatch,
-    where: str,
-) -> metrics.FoldMetrics:
-    """The by-product diagnostic (#3 §3): score with the trained head directly,
-    bypassing the shared decoder entirely. No survival function exists here —
-    a raw NN head produces a ranking, not a Breslow baseline hazard — so this
-    never carries an integrated Brier score."""
-    model.eval()
-    with torch.no_grad():
-        trainval_risk = model(trainval.batch).numpy()
-        test_risk = model(test.batch).numpy()
-
-    metrics.assert_discriminates(
-        trainval.target.event, trainval.target.time, trainval_risk, where=where
-    )
-
-    return metrics.score_fold(
-        train_time=trainval.target.time,
-        train_event=trainval.target.event,
-        test_time=test.target.time,
-        test_event=test.target.event,
-        test_study=test.target.study,
-        risk=test_risk,
-    )
-
-
 @dataclass(frozen=True)
 class FoldResult:
     fold: int
     config: GraphArmConfig
     contract: FeatureContract = field(repr=False)
-    encoder_fit: EncoderFit = field(repr=False)
+    encoder_fit: EncoderFit[SubjectSubgraphEncoder] = field(repr=False)
     construction: dict[str, object] = field(repr=False)
     primary: TwoStageResult
     # #3 §3's two pre-declared diagnostics — "not as options" — run alongside
@@ -279,25 +230,12 @@ class FoldResult:
             "final_val_loss": self.encoder_fit.val_loss_curve[-1],
             "construction": self.construction,
             "metrics": self.primary.fold_metrics.to_dict(),
-            "diagnostics": {
-                "random_init_encoder": {
-                    "description": (
-                        "Frozen, untrained encoder (#3 §3): if this scores near "
-                        "the primary result, message passing/learning is not "
-                        "doing the work."
-                    ),
-                    "chosen_penalizer": self.random_init.penalty_selection.chosen_penalizer,
-                    "metrics": self.random_init.fold_metrics.to_dict(),
-                },
-                "end_to_end": {
-                    "description": (
-                        "By-product of stage one (#3 §3): the trained encoder's "
-                        "own head, scored directly with no shared decoder. "
-                        "'Best-case arm 3' — never the primary number."
-                    ),
-                    "metrics": self.end_to_end.to_dict(),
-                },
-            },
+            "diagnostics": training.diagnostics_to_dict(
+                arm_label="arm 3",
+                random_init_penalizer=self.random_init.penalty_selection.chosen_penalizer,
+                random_init=self.random_init.fold_metrics,
+                end_to_end=self.end_to_end,
+            ),
         }
 
 
@@ -316,6 +254,7 @@ def _describe(subgraphs: cache.SubgraphSet, blocks: FeatureBlocks, model: Subjec
         "feature_widths": dict(sorted(blocks.widths.items())),
         "n_parameters": sum(p.numel() for p in model.parameters()),
         "fingerprint": subgraphs.fingerprint,
+        "condition_flag": CONDITION_FLAG,
     }
 
 
@@ -381,10 +320,12 @@ def run_fold(
         where=f"arm3 fold {outer_fold} (random-init control)",
     )
 
-    end_to_end = _end_to_end_score(
+    end_to_end = training.end_to_end_score(
         encoder_fit.model,
-        trainval=trainval,
-        test=test,
+        trainval_input=trainval.batch,
+        trainval_target=trainval.target,
+        test_input=test.batch,
+        test_target=test.target,
         where=f"arm3 fold {outer_fold} (end-to-end diagnostic)",
     )
 
@@ -415,6 +356,9 @@ def iter_folds(
     before fold 4 starts. Losing four completed folds to an interruption in the
     fifth is avoidable, and the caller is the only one that knows where they go.
     """
+    training.check_run_identity(
+        arm=config.arm, expected_arm=ARM, endpoint=config.endpoint, split=config.split
+    )
     subject_records = records if records is not None else cache.load_subject_records()
     raw_frame = raw if raw is not None else assemble_raw_frame()
     survival_targets = targets if targets is not None else load_targets()
@@ -430,17 +374,3 @@ def iter_folds(
             config=config,
             use_cache=use_cache,
         )
-
-
-def run_all_folds(
-    config: GraphArmConfig,
-    *,
-    records: cache.SubjectRecords | None = None,
-    raw: pd.DataFrame | None = None,
-    targets: SurvivalTarget | None = None,
-    use_cache: bool = True,
-) -> list[FoldResult]:
-    """All 5 outer folds, collected. `iter_folds` for anything that persists as it goes."""
-    return list(
-        iter_folds(config, records=records, raw=raw, targets=targets, use_cache=use_cache)
-    )

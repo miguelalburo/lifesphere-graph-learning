@@ -30,6 +30,7 @@ from gl_lifesphere.evaluation.splits import FoldSplit
 from gl_lifesphere.extract.cast import reduce_diagnoses
 from gl_lifesphere.features.contract import fit_feature_contract
 from gl_lifesphere.features.raw import build_raw_frame
+from gl_lifesphere.models import training
 from gl_lifesphere.models.graph import (
     GraphArmConfig,
     RelationalLayer,
@@ -181,6 +182,38 @@ class TestRunFold:
         # 5 forward relations and their 5 reverses.
         assert len(construction["relation_types"]) == 10
         assert construction["n_subjects"] == len(records.subject_ids)
+
+
+class TestRunIdentityIsHonoured:
+    """`experiments/README.md` requires a config to name the arm, construction,
+    endpoint, split and seed, "so a run is only useful if it is pinned down
+    enough to line up against the others". Declaring is not honouring: the
+    loaders read the frozen cohort and the persisted folds regardless, so
+    without a check a config reading `"endpoint": "PFI"` would produce OS
+    numbers filed under a PFI label."""
+
+    def test_the_shipped_config_declares_the_run_it_actually_gets(self) -> None:
+        from gl_lifesphere.models.graph.__main__ import DEFAULT_CONFIG
+
+        config = GraphArmConfig.from_dict(json.loads(DEFAULT_CONFIG.read_text()))
+        training.check_run_identity(
+            arm=config.arm, expected_arm="arm3_graph",
+            endpoint=config.endpoint, split=config.split,
+        )
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("endpoint", "PFI"), ("split", "10fold_random_seed7"), ("arm", "arm2_tabular")],
+    )
+    def test_a_config_declaring_something_else_fails_loudly(
+        self, field: str, value: str
+    ) -> None:
+        config = _config(**{field: value})
+        with pytest.raises(ValueError, match="declares a run it will not get"):
+            training.check_run_identity(
+                arm=config.arm, expected_arm="arm3_graph",
+                endpoint=config.endpoint, split=config.split,
+            )
 
 
 class TestEncoder:

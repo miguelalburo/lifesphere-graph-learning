@@ -12,24 +12,30 @@ hyperparameters, so a config change never requires touching this file.
 
 from __future__ import annotations
 
-import copy
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 
 import pandas as pd
 import torch
 
 from ...evaluation.splits import FoldSplit, fold_split, load_folds
 from ...features import FeatureContract, assemble_raw_frame, fit_feature_contract
-from ...survival import decoder, losses, metrics
+from ...survival import decoder, metrics
 from ...survival.targets import SurvivalTarget, load_targets
 from ...survival.two_stage import TwoStageResult, two_stage_score
+from .. import training
+from ..training import EncoderFit
 from .network import TabularEncoder
+
+ARM = "arm2_tabular"
 
 
 @dataclass(frozen=True)
 class TabularArmConfig:
     """Every hyperparameter this module needs; everything else is fixed by #3."""
 
+    arm: str = ARM
+    endpoint: str = training.LOCKED_ENDPOINT
+    split: str = field(default_factory=training.locked_split_name)
     hidden_dims: tuple[int, ...] = (32,)
     d: int = 16
     dropout: float = 0.2
@@ -44,21 +50,12 @@ class TabularArmConfig:
     def from_dict(cls, payload: dict[str, object]) -> "TabularArmConfig":
         """Ignores keys the dataclass does not declare (e.g. a `_comment`), so a
         documented config file need not be stripped before loading."""
-        known = {f.name for f in fields(cls)}
-        kwargs = {key: value for key, value in payload.items() if key in known}
+        kwargs = training.config_from_dict(cls, payload)
         if "hidden_dims" in kwargs:
             kwargs["hidden_dims"] = tuple(kwargs["hidden_dims"])  # type: ignore[arg-type]
         if "penalty_grid" in kwargs:
             kwargs["penalty_grid"] = tuple(kwargs["penalty_grid"])  # type: ignore[arg-type]
         return cls(**kwargs)  # type: ignore[arg-type]
-
-
-@dataclass(frozen=True)
-class EncoderFit:
-    model: TabularEncoder
-    train_loss_curve: tuple[float, ...]
-    val_loss_curve: tuple[float, ...]
-    best_epoch: int
 
 
 def _to_tensor(frame: pd.DataFrame) -> torch.Tensor:
@@ -72,56 +69,30 @@ def train_encoder(
     val_target: SurvivalTarget,
     *,
     config: TabularArmConfig,
-) -> EncoderFit:
+) -> EncoderFit[TabularEncoder]:
     """Full-batch Adam on the stratified Efron Cox loss, early-stopped on val loss."""
-    torch.manual_seed(config.seed)
-    model = TabularEncoder(
-        input_dim=x_train.shape[1], hidden_dims=config.hidden_dims, d=config.d, dropout=config.dropout
+    return training.train_with_early_stopping(
+        _new_encoder(x_train.shape[1], config=config),
+        train_input=_to_tensor(x_train),
+        train_target=train_target,
+        val_input=_to_tensor(x_val),
+        val_target=val_target,
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+        max_epochs=config.max_epochs,
+        patience=config.patience,
     )
-    optimiser = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
-    train_x = _to_tensor(x_train)
-    val_x = _to_tensor(x_val)
 
-    best_state = copy.deepcopy(model.state_dict())
-    best_val = float("inf")
-    best_epoch = 0
-    train_curve: list[float] = []
-    val_curve: list[float] = []
-
-    for epoch in range(config.max_epochs):
-        model.train()
-        optimiser.zero_grad()
-        train_risk = model(train_x)
-        train_loss = losses.stratified_efron_cox_loss(
-            train_risk, train_target.time, train_target.event, train_target.study
-        )
-        train_loss.backward()
-        optimiser.step()
-        train_curve.append(train_loss.item())
-
-        model.eval()
-        with torch.no_grad():
-            val_risk = model(val_x)
-            val_loss = losses.stratified_efron_cox_loss(
-                val_risk, val_target.time, val_target.event, val_target.study
-            )
-        val_curve.append(float(val_loss))
-
-        if val_curve[-1] < best_val:
-            best_val = val_curve[-1]
-            best_epoch = epoch
-            best_state = copy.deepcopy(model.state_dict())
-        elif epoch - best_epoch >= config.patience:
-            break
-
-    model.load_state_dict(best_state)
-    model.eval()
-    return EncoderFit(
-        model=model,
-        train_loss_curve=tuple(train_curve),
-        val_loss_curve=tuple(val_curve),
-        best_epoch=best_epoch,
+def _new_encoder(input_dim: int, *, config: TabularArmConfig) -> TabularEncoder:
+    """A freshly initialised encoder. Seeding lives here because #3 §3's
+    random-init control requires exactly these pre-training weights."""
+    torch.manual_seed(config.seed)
+    return TabularEncoder(
+        input_dim=input_dim,
+        hidden_dims=config.hidden_dims,
+        d=config.d,
+        dropout=config.dropout,
     )
 
 
@@ -137,7 +108,7 @@ class FoldResult:
     fold: int
     config: TabularArmConfig
     contract: FeatureContract = field(repr=False)
-    encoder_fit: EncoderFit = field(repr=False)
+    encoder_fit: EncoderFit[TabularEncoder] = field(repr=False)
     primary: TwoStageResult
     # #3 §3's two pre-declared diagnostics — "not as options" — run alongside
     # the primary two-stage result on every fold, at near-zero marginal cost.
@@ -162,25 +133,12 @@ class FoldResult:
             "final_train_loss": self.encoder_fit.train_loss_curve[-1],
             "final_val_loss": self.encoder_fit.val_loss_curve[-1],
             "metrics": self.primary.fold_metrics.to_dict(),
-            "diagnostics": {
-                "random_init_encoder": {
-                    "description": (
-                        "Frozen, untrained encoder (#3 §3): if this scores near "
-                        "the primary result, message passing/learning is not "
-                        "doing the work."
-                    ),
-                    "chosen_penalizer": self.random_init.penalty_selection.chosen_penalizer,
-                    "metrics": self.random_init.fold_metrics.to_dict(),
-                },
-                "end_to_end": {
-                    "description": (
-                        "By-product of stage one (#3 §3): the trained encoder's "
-                        "own head, scored directly with no shared decoder. "
-                        "'Best-case arm 2' — never the primary number."
-                    ),
-                    "metrics": self.end_to_end.to_dict(),
-                },
-            },
+            "diagnostics": training.diagnostics_to_dict(
+                arm_label="arm 2",
+                random_init_penalizer=self.random_init.penalty_selection.chosen_penalizer,
+                random_init=self.random_init.fold_metrics,
+                end_to_end=self.end_to_end,
+            ),
         }
 
 
@@ -189,35 +147,6 @@ def _design_and_target(
 ) -> tuple[pd.DataFrame, SurvivalTarget]:
     design = contract.transform(raw, subject_ids)
     return design, targets.reorder(design.index)
-
-
-def _end_to_end_score(
-    model: TabularEncoder,
-    *,
-    x_trainval: pd.DataFrame,
-    trainval_target: SurvivalTarget,
-    x_test: pd.DataFrame,
-    test_target: SurvivalTarget,
-    where: str,
-) -> metrics.FoldMetrics:
-    """The by-product diagnostic (#3 §3): score with the trained head directly,
-    bypassing the shared decoder entirely. No survival function exists here —
-    a raw NN head produces a ranking, not a Breslow baseline hazard — so this
-    never carries an integrated Brier score."""
-    with torch.no_grad():
-        trainval_risk = model(_to_tensor(x_trainval)).numpy()
-        test_risk = model(_to_tensor(x_test)).numpy()
-
-    metrics.assert_discriminates(trainval_target.event, trainval_target.time, trainval_risk, where=where)
-
-    return metrics.score_fold(
-        train_time=trainval_target.time,
-        train_event=trainval_target.event,
-        test_time=test_target.time,
-        test_event=test_target.event,
-        test_study=test_target.study,
-        risk=test_risk,
-    )
 
 
 def run_fold(
@@ -263,10 +192,7 @@ def run_fold(
         where=f"arm2 fold {outer_fold} (train+val)",
     )
 
-    torch.manual_seed(config.seed)
-    random_model = TabularEncoder(
-        input_dim=x_train.shape[1], hidden_dims=config.hidden_dims, d=config.d, dropout=config.dropout
-    ).eval()
+    random_model = _new_encoder(x_train.shape[1], config=config).eval()
     random_init = two_stage_score(
         z_train=_embed(random_model, x_train),
         train_target=train_target,
@@ -278,11 +204,11 @@ def run_fold(
         where=f"arm2 fold {outer_fold} (random-init control)",
     )
 
-    end_to_end = _end_to_end_score(
+    end_to_end = training.end_to_end_score(
         encoder_fit.model,
-        x_trainval=x_trainval,
+        trainval_input=_to_tensor(x_trainval),
         trainval_target=trainval_target,
-        x_test=x_test,
+        test_input=_to_tensor(x_test),
         test_target=test_target,
         where=f"arm2 fold {outer_fold} (end-to-end diagnostic)",
     )
@@ -305,6 +231,9 @@ def run_all_folds(
     targets: SurvivalTarget | None = None,
 ) -> list[FoldResult]:
     """All 5 outer folds of the locked Study-stratified split (#7)."""
+    training.check_run_identity(
+        arm=config.arm, expected_arm=ARM, endpoint=config.endpoint, split=config.split
+    )
     raw_frame = raw if raw is not None else assemble_raw_frame()
     survival_targets = targets if targets is not None else load_targets()
     folds = load_folds()

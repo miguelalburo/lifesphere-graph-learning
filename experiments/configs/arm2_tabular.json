@@ -1,10 +1,12 @@
 {
   "_comment": "Arm 2: flattened/tabular control (#10). OS endpoint, 20-Study cohort, 5-fold Study-stratified CV (#7), stratified Efron Cox loss and lifelines CoxPHFitter decoder locked by #3, feature contract locked by #4 and amended on #12.",
-  "_contract_amendment": "Re-run on #12 (2026-08-09) because the shared feature contract changed: the Condition feature keys on conditionId rather than the corrupt conditionName (#4 §2's amendment). This widens the design matrix from ~74 to 167 columns (121 Condition levels against 28 names). Arms 2 and 3 must carry identical features or their difference is an encoding artifact rather than a structural result, so the earlier arm-2 numbers are superseded rather than comparable.",
+  "_contract_amendment": "Re-run on #12 (2026-08-09) because the shared feature contract changed: the Condition feature keys on conditionId rather than the corrupt conditionName (#4 \u00a72's amendment). This widens the design matrix from ~74 to 167 columns (121 Condition levels against 28 names). Arms 2 and 3 must carry identical features or their difference is an encoding artifact rather than a structural result, so the earlier arm-2 numbers are superseded rather than comparable.",
   "arm": "arm2_tabular",
   "endpoint": "OS",
   "split": "5fold_study_stratified_seed0",
-  "hidden_dims": [32],
+  "hidden_dims": [
+    32
+  ],
   "d": 16,
   "dropout": 0.2,
   "lr": 0.001,

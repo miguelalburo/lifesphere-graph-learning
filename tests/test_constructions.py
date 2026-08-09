@@ -15,6 +15,9 @@ route.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import fixtures
@@ -249,3 +252,52 @@ class TestCache:
         built = cache.build_subgraphs(records, contract)
         with pytest.raises(KeyError, match="not in this construction"):
             built.select(frozenset({"SUBJ-999"}))
+
+
+class TestFingerprintIsStableAcrossProcesses:
+    """The cache key must not depend on Python's per-process hash randomisation.
+
+    `FeatureContract` carries a `frozenset` (race's fixed fold), so a `repr`-based
+    fingerprint changes between runs of identical code on identical data. That is
+    the quiet half of a cache bug: nothing raises, every number stays correct, and
+    the cache simply never hits — which is invisible unless it is asserted.
+    """
+
+    def _fingerprint_under(self, seed: str, tmp_path: Path) -> str:
+        script = tmp_path / "fingerprint.py"
+        script.write_text(
+            "import fixtures\n"
+            "from gl_lifesphere.constructions import cache\n"
+            "from gl_lifesphere.extract.cast import reduce_diagnoses\n"
+            "from gl_lifesphere.features.contract import fit_feature_contract\n"
+            "from gl_lifesphere.features.raw import build_raw_frame\n"
+            "interim = fixtures.synthetic_interim()\n"
+            "records = cache.build_subject_records(\n"
+            "    members=interim['members'], subjects=interim['subjects'],\n"
+            "    diagnoses=interim['diagnoses'], samples=interim['samples'],\n"
+            "    pathology=interim['pathology_details'])\n"
+            "raw = build_raw_frame(members=interim['members'], subjects=interim['subjects'],\n"
+            "    diagnosis_primary=reduce_diagnoses(interim['diagnoses']), samples=interim['samples'])\n"
+            "contract = fit_feature_contract(raw, frozenset(interim['members']['subjectId']))\n"
+            "print(cache.fingerprint(records, contract, cache.BuildOptions()))\n"
+        )
+        # The script runs from tmp_path, so sys.path[0] is not the repo — both
+        # the package and the `fixtures` module have to be put on the path.
+        tests_dir = Path(__file__).parent
+        environment = {
+            **os.environ,
+            "PYTHONHASHSEED": seed,
+            "PYTHONPATH": os.pathsep.join([str(tests_dir.parent), str(tests_dir)]),
+        }
+        completed = subprocess.run(
+            [sys.executable, str(script)], capture_output=True, text=True,
+            env=environment, cwd=Path(__file__).parent.parent, check=True,
+        )
+        return completed.stdout.strip()
+
+    def test_hash_randomisation_does_not_change_the_key(self, tmp_path: Path) -> None:
+        seeds = ["1", "3", "12345"]
+        digests = {seed: self._fingerprint_under(seed, tmp_path) for seed in seeds}
+        assert len(set(digests.values())) == 1, (
+            f"fingerprint depends on PYTHONHASHSEED: {digests}"
+        )

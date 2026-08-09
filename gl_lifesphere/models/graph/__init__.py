@@ -29,7 +29,6 @@ from .train import (
     SplitBatch,
     collate,
     iter_folds,
-    run_all_folds,
     run_fold,
     train_encoder,
 )
@@ -42,7 +41,6 @@ __all__ = [
     "SubjectSubgraphEncoder",
     "collate",
     "iter_folds",
-    "run_all_folds",
     "run_fold",
     "train_encoder",
 ]
