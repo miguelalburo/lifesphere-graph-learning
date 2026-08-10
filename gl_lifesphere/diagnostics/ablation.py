@@ -34,7 +34,7 @@ schema, and the honest reading is that there is no structure here to learn.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -82,7 +82,7 @@ class AblationResult:
             # `experiments/README.md`: a run is only useful if it is pinned down
             # enough to line up against the others, and the arm this is paired
             # against is recorded under a different config file.
-            "config": _comparable_fields(self.config),
+            "config": recorded.comparable_fields(self.config),
             "metric": METRIC,
             "full_per_fold": list(self.full_per_fold),
             "ablated_per_fold": list(self.ablated_per_fold),
@@ -117,7 +117,9 @@ def run_structure_ablation(
     """
     ablated_config = replace(config, ablate_edges=True)
     arm = full_arm if full_arm is not None else recorded.load_arm(ARM)
-    recorded.check_comparable(arm, _comparable_fields(ablated_config), varies=("ablate_edges",))
+    recorded.check_comparable(
+        arm, recorded.comparable_fields(ablated_config), varies=("ablate_edges",)
+    )
 
     subject_records = records if records is not None else cache.load_subject_records()
     raw_frame = raw if raw is not None else assemble_raw_frame()
@@ -157,23 +159,3 @@ def run_structure_ablation(
         delta=paired_delta(full_per_fold, ablated_per_fold),
         ablated_folds=ablated,
     )
-
-
-# Not compared: a tuple of floats that no config file spells the same way twice,
-# and which `decoder.select_penalty` searches rather than fixes.
-_NOT_COMPARED = frozenset({"penalty_grid"})
-
-
-def _comparable_fields(config: GraphArmConfig) -> dict[str, object]:
-    """The config fields a recorded arm-3 run must agree on for the pairing to mean anything.
-
-    Derived from the dataclass rather than listed by hand. A hand-list is the
-    wrong shape for a guard whose whole job is to catch an uncontrolled
-    difference: adding a field to `GraphArmConfig` would silently drop it from
-    the very check meant to notice it.
-    """
-    return {
-        field.name: getattr(config, field.name)
-        for field in fields(config)
-        if field.name not in _NOT_COMPARED
-    }

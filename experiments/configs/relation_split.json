@@ -1,0 +1,18 @@
+{
+  "_comment": "#15's follow-up probe: is arm 3's margin over arm 2 the secondary-diagnosis channel rather than message passing? Arm 3 is re-run with split_primary_relation=False and paired fold-for-fold against the recorded split run and against the comparison arm (arm 2, the flattened/tabular representation). OS endpoint, 20-Study cohort, 5-fold Study-stratified CV (#7), the survival contract locked by #3 and the feature contract locked by #4.",
+  "_where_the_hyperparameters_come_from": "Nowhere here. The probe reads experiments/configs/arm3_graph.json directly and flips exactly one field, so the two sides of the comparison cannot drift -- the same rule the trust gate follows for the arms it retrains. A copy of arm 3's hyperparameters in this file would be a second place to change them and a second place to forget. gl_lifesphere.diagnostics.recorded.check_comparable refuses to pair unless the recorded arm 3 differs from this run in split_primary_relation alone.",
+  "_what_the_channel_is": "#11 split HAS_DIAGNOSIS on isPrimaryDiagnosis. A bias-free convolution over an empty relation contributes exactly 0 while a non-empty one does not, so 'this Subject has at least one secondary Diagnosis' is structurally visible to the encoder -- a 1-bit read on n_diagnoses > 1 (37.3% of Subjects), worth within-Study C = 0.5588 fitted alone (#13's degree probe, decomposition key arm3_visible:has_secondary_diagnosis). Arms 1 and 2 cannot see it: features/raw.py joins from diagnosis_primary, one row per Subject, and excludes nDiagnoses explicitly.",
+  "_what_this_cannot_settle": "Collapsing the split does not remove the multiplicity signal outright -- a Subject with 3 Diagnoses still mean-aggregates to a different value than one with 1. It removes the clean presence/absence indicator, not the channel. A null therefore bounds the effect rather than eliminating it, and a positive result is the stronger reading (#15).",
+  "_capacity_is_not_held_fixed": "Unlike #13's structure ablation, which emptied edge contents and so could keep every W_r, this manipulation merges two relations into one and necessarily merges their weight matrices -- the unsplit encoder is smaller. Both differences push the unsplit run down, so a measured cost is an upper bound on the presence bit's contribution while the residual multiplicity channel makes it a partial removal besides. parameters_per_fold in the result file carries the size of the capacity term.",
+  "_not_a_gate_item": "#13's verdict is over encoder doc §7's three diagnostics and nothing else, so this probe uses its own verdict vocabulary (ATTRIBUTED / NOT ATTRIBUTED / REVERSED) and the gate has no input path to it. A cheaper follow-up must not be able to overturn a declared FAIL.",
+  "_resolution_limit": "0.02 is #3 §5's resolution limit for this design -- the smallest difference 5 correlated folds can resolve. It is not a bar this probe passes or fails. It is declared here because the quantity being decomposed, arm3 - arm2 = +0.0180 (#12), already sits below it, so any share of that margin inherits the same unresolvability and the result file must say so beside the number.",
+  "_seed_and_construction_are_declared_but_supplied": "arm, endpoint and split go through training.check_run_identity, the one place that rule lives. construction and seed are declared here but supplied by arm3_graph.json -- RelationSplitConfig.check_against raises if the two disagree, so a probe file naming a different seed cannot record a number produced under another one.",
+  "probe": "relation_split",
+  "arm": "arm3_graph",
+  "construction": "subject_subgraph",
+  "endpoint": "OS",
+  "split": "5fold_study_stratified_seed0",
+  "seed": 0,
+  "resolution_limit": 0.02,
+  "comparison_arm": "arm2_tabular"
+}

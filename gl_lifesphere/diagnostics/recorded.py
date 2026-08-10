@@ -18,11 +18,15 @@ class `tests/README.md` puts first.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..evaluation.splits import N_SPLITS
 from ..extract.connection import REPO_ROOT
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from _typeshed import DataclassInstance
 
 METRICS_DIR = REPO_ROOT / "results" / "metrics"
 
@@ -104,6 +108,31 @@ def check_comparable(
             f"{recorded.arm}'s recorded run differs from this one in more than {list(varies)} -- "
             f"{detail}. Re-run the arm, or the comparison is measuring that difference too."
         )
+
+
+# Not compared: a tuple of floats that no config file spells the same way twice,
+# and which `decoder.select_penalty` searches rather than fixes.
+_NOT_COMPARED = frozenset({"penalty_grid"})
+
+
+def comparable_fields(config: "DataclassInstance") -> dict[str, object]:
+    """The config fields a recorded run must agree on for a pairing to mean anything.
+
+    Derived from the dataclass rather than listed by hand. A hand-list is the
+    wrong shape for a guard whose whole job is to catch an uncontrolled
+    difference: adding a field to an arm's config would silently drop it from
+    the very check meant to notice it.
+
+    Lives here rather than in one caller because both controls that pair against
+    a recorded arm need exactly this set — #13's structure ablation and #15's
+    relation-split probe — and two copies of a guard are two places for it to
+    stop covering a new field.
+    """
+    return {
+        field.name: getattr(config, field.name)
+        for field in fields(config)
+        if field.name not in _NOT_COMPARED
+    }
 
 
 def _module(arm: str) -> str:

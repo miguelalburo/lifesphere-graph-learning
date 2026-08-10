@@ -25,6 +25,17 @@ training-fold risk discriminates, because a sign-inverted score silently
 produces `1 - C` rather than raising. Under a permuted label that premise is
 inverted, so the shuffle passes `expect_discrimination=False` and the degree
 probe never asserts at all. Nothing else in the project may do either.
+
+**One module here is not part of the gate.** `relation_split` is #15, the
+follow-up the degree probe's own decomposition raised: whether arm 3's +0.0180
+over arm 2 is the secondary-diagnosis channel the relation split makes visible,
+rather than message passing. It lives beside the three because it shares all
+their machinery — the recorded-arm reader, the comparability guard, the paired
+delta — but it is an attribution question rather than a control. It has its own
+verdict vocabulary, its own command
+(`python -m gl_lifesphere.diagnostics.relation_split`) and its own output
+directory, and `gate` has no input path to it. A cheaper follow-up must not be
+able to overturn a declared FAIL.
 """
 
 from __future__ import annotations
@@ -33,6 +44,13 @@ from .ablation import AblationResult, run_structure_ablation
 from .counts import AccrualCounts, COUNT_COLUMNS, PROBE_COLUMNS, load_accrual_counts
 from .degree_probe import DegreeProbeResult, run_degree_probe
 from .gate import GateConfig, GateReport, Verdict, assess
+from .relation_split import (
+    Attribution,
+    RelationSplitConfig,
+    RelationSplitResult,
+    assess_attribution,
+    run_relation_split,
+)
 from .shuffle import ShuffleResult, permute_targets, run_label_shuffle
 
 __all__ = [
@@ -40,15 +58,20 @@ __all__ = [
     "PROBE_COLUMNS",
     "AblationResult",
     "AccrualCounts",
+    "Attribution",
     "DegreeProbeResult",
     "GateConfig",
     "GateReport",
+    "RelationSplitConfig",
+    "RelationSplitResult",
     "ShuffleResult",
     "Verdict",
     "assess",
+    "assess_attribution",
     "load_accrual_counts",
     "permute_targets",
     "run_degree_probe",
     "run_label_shuffle",
+    "run_relation_split",
     "run_structure_ablation",
 ]

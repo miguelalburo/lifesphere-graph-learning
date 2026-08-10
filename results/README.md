@@ -28,3 +28,16 @@ table nobody has earned yet.
 `python -m gl_lifesphere.diagnostics --only gate`, so a verdict can be re-read
 without retraining anything. **A PASS means a control failed the way a control
 is supposed to — it says nothing about whether a result is good.**
+
+## `metrics/relation_split/` — the follow-up the gate raised, not a fourth verdict
+
+`relation_split.json` is #15: arm 3 re-run with `split_primary_relation=False`
+and paired fold-for-fold against the recorded split run and against arm 2. It
+answers whether arm 3's +0.0180 margin is the secondary-diagnosis channel #11's
+relation split makes structurally visible, or message passing.
+
+It sits in its own directory on purpose. `gate.json` is assembled from exactly
+the three files above, so a follow-up cannot rewrite the verdict that prompted
+it — and this probe's vocabulary (`ATTRIBUTED` / `NOT ATTRIBUTED` / `REVERSED`)
+is deliberately not PASS/FAIL for the same reason. Produced by
+`python -m gl_lifesphere.diagnostics.relation_split`.
