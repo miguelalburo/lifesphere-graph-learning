@@ -1,16 +1,16 @@
-"""Stage-one mechanics every neural arm shares, and the run identity they declare.
+"""Stage-one mechanics every neural model shares, and the run identity they declare.
 
 `survival.two_stage` already made stage two one implementation rather than a
-convention two arms are each expected to honour. This is the same argument
-applied to stage one: an arm's *representation* is what the study varies, so
+convention two models are each expected to honour. This is the same argument
+applied to stage one: a model's *representation* is what the study varies, so
 the encoder differs — but the early-stopping loop, the by-product diagnostic,
 and the shape of a recorded result must not, or a divergence between them lands
 in the comparison looking like a structural finding.
 
-What is genuinely arm-specific stays with the arm: constructing the encoder
+What is genuinely model-specific stays with the model: constructing the encoder
 (including its seeding, which fixes the random-init control of #3 §3) and
-choosing what to feed it. Everything here is generic in that input type — arm 2
-passes a design-matrix tensor, arm 3 a collated `Batch`, and both encoders map
+choosing what to feed it. Everything here is generic in that input type — model 2
+passes a design-matrix tensor, model 3 a collated `Batch`, and both encoders map
 their input to a risk score by the same `model(x)` contract.
 """
 
@@ -39,14 +39,14 @@ LOCKED_ENDPOINT = "OS"
 
 
 def locked_split_name() -> str:
-    """The split every arm consumes, spelled the way a config declares it (#7)."""
+    """The split every model consumes, spelled the way a config declares it (#7)."""
     return f"{N_SPLITS}fold_study_stratified_seed{SEED}"
 
 
-def check_run_identity(*, arm: str, expected_arm: str, endpoint: str, split: str) -> None:
+def check_run_identity(*, model: str, expected_model: str, endpoint: str, split: str) -> None:
     """Raise unless a config's declared identity matches the run it will actually get.
 
-    `experiments/README.md` requires a config to name "the arm, the construction
+    `experiments/README.md` requires a config to name "the model, the construction
     ..., the survival endpoint, the split, and the seed", because "a run is only
     useful if it is pinned down enough to line up against the others". Declaring
     those fields is not the same as honouring them: the loaders here read the
@@ -59,7 +59,7 @@ def check_run_identity(*, arm: str, expected_arm: str, endpoint: str, split: str
     mismatches = {
         name: (declared, expected)
         for name, declared, expected in (
-            ("arm", arm, expected_arm),
+            ("model", model, expected_model),
             ("endpoint", endpoint, LOCKED_ENDPOINT),
             ("split", split, expected_split),
         )
@@ -81,7 +81,7 @@ def config_from_dict(cls: type[Any], payload: dict[str, object]) -> dict[str, ob
 
     Every config file carries `_comment` and similar documentation keys, so a
     config is never passed to its dataclass verbatim. Returning the filtered
-    kwargs rather than the constructed object leaves each arm free to coerce its
+    kwargs rather than the constructed object leaves each model free to coerce its
     own tuple-valued fields.
     """
     known = {field.name for field in fields(cls)}
@@ -119,8 +119,8 @@ def train_with_early_stopping(
 
     `model` arrives already constructed, because construction is where the seed
     is set and #3 §3's random-init control requires "exactly the pre-training
-    weights" — moving it in here would put the arm's seeding at one remove from
-    the arm.
+    weights" — moving it in here would put the model's seeding at one remove from
+    the model.
     """
     optimiser = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -208,15 +208,15 @@ def end_to_end_score(
 
 def diagnostics_to_dict(
     *,
-    arm_label: str,
+    model_label: str,
     random_init_penalizer: float,
     random_init: metrics.FoldMetrics,
     end_to_end: metrics.FoldMetrics,
 ) -> dict[str, object]:
-    """#3 §3's two pre-declared controls, recorded in one shape across arms.
+    """#3 §3's two pre-declared controls, recorded in one shape across models.
 
     They are pre-declared "not as options", so they run on every fold of every
-    neural arm — and a reader comparing two arms' fold files should not have to
+    neural model — and a reader comparing two models' fold files should not have to
     check whether the two recorded them the same way.
     """
     return {
@@ -231,7 +231,7 @@ def diagnostics_to_dict(
         "end_to_end": {
             "description": (
                 "By-product of stage one (#3 §3): the trained encoder's own head, "
-                f"scored directly with no shared decoder. 'Best-case {arm_label}' "
+                f"scored directly with no shared decoder. 'Best-case {model_label}' "
                 "— never the primary number."
             ),
             "metrics": end_to_end.to_dict(),

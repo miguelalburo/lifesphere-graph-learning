@@ -13,7 +13,7 @@ things keep that true, and none of them is a convention:
 
 - it is pulled by this module rather than by `extract.raw.pull_all`, so it is
   absent from `PULLS`, from `CASTS`, and from the pipeline that builds the
-  tables the arms read;
+  tables the models read;
 - it is written to `data/interim/diagnostics/` rather than `data/interim/`, so
   neither `features.raw.assemble_raw_frame` nor `constructions.cache` can reach
   it — both name the tables they load;
@@ -58,11 +58,11 @@ COUNT_COLUMNS: tuple[str, ...] = ("nSamples", "nDiagnoses", "nInterventions")
 PROBE_COLUMNS: tuple[str, ...] = tuple(f"log1p_{column}" for column in COUNT_COLUMNS)
 
 # Not one of §7's three, and never part of the headline probe. This is the one
-# accrual channel arm 3 can actually see: mean aggregation hides degree
+# accrual channel model 3 can actually see: mean aggregation hides degree
 # (encoder doc §2.3), but #11 split `HAS_DIAGNOSIS` on `isPrimaryDiagnosis`, and
 # an empty relation contributes exactly 0 while a non-empty one does not — so
 # "this Subject has at least one secondary Diagnosis" is structurally visible to
-# the encoder. Fitting it alone turns the gate's claim about arm 3's exposure
+# the encoder. Fitting it alone turns the gate's claim about model 3's exposure
 # into a measurement instead of an assertion.
 SECONDARY_DIAGNOSIS = "has_secondary_diagnosis"
 DERIVED_COLUMNS: tuple[str, ...] = (SECONDARY_DIAGNOSIS,)
@@ -116,7 +116,7 @@ class AccrualCounts:
         covariate. A failing probe is only actionable once you know *which*
         count carries it: a protective hazard ratio is immortal time, while a
         harmful one is disease burden, and those two have opposite implications
-        for whether an arm that could see the count is compromised.
+        for whether a model that could see the count is compromised.
         """
         unknown = set(columns) - set(PROBE_COLUMNS) - set(DERIVED_COLUMNS)
         if unknown:
@@ -192,7 +192,7 @@ def pull_intervention_counts(
             "query": "count(DISTINCT Intervention) per Subject over the pinned cohort Studies",
             "why_not_in_PULLS": (
                 "Intervention is in extract.cypher.DROPPED_NODE_TYPES -- its bare presence is an "
-                "immortal-time leak (#4 §4). Kept out of data/interim/ so no arm can load it."
+                "immortal-time leak (#4 §4). Kept out of data/interim/ so no model can load it."
             ),
         },
     )

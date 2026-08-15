@@ -1,10 +1,10 @@
-"""Arm 3 — GL/GNN models over the graph constructions.
+"""Model 3 — GL/GNN models over the graph constructions.
 
 Rung 3 of encoder doc §4's ablation ladder: the full uncollapsed R-GCN over the
 rooted per-Subject subgraph, type-aware input embedding into a shared `d`,
 relation-aware message passing at `L = 2`, and root readout `z_G = h_{v_0}^(L)`.
 The risk head and survival loss sit downstream in `gl_lifesphere.survival`, and
-stage two is literally arm 2's code (`survival.two_stage`), so the arms differ
+stage two is literally model 2's code (`survival.two_stage`), so the models differ
 in their representation and nothing else.
 
 **The construction is not schema-complete any more, and the shape is the
@@ -25,7 +25,7 @@ from __future__ import annotations
 from .network import RelationalLayer, SubjectSubgraphEncoder
 from .train import (
     FoldResult,
-    GraphArmConfig,
+    GraphModelConfig,
     SplitBatch,
     collate,
     iter_folds,
@@ -35,7 +35,7 @@ from .train import (
 
 __all__ = [
     "FoldResult",
-    "GraphArmConfig",
+    "GraphModelConfig",
     "RelationalLayer",
     "SplitBatch",
     "SubjectSubgraphEncoder",

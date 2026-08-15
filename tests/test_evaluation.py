@@ -179,7 +179,7 @@ class TestPersistence:
 
         Guards against a library version bump changing `StratifiedKFold`'s
         internal tie-breaking: the persisted file, not the seed alone, is
-        what every arm and every rerun must agree on.
+        what every model and every rerun must agree on.
         """
         first = splits.freeze(labels=labels, destination=tmp_path / "a")
         second = splits.freeze(labels=labels, destination=tmp_path / "b")

@@ -1,6 +1,6 @@
-"""Censored survival targets, losses, and metrics — shared by every arm.
+"""Censored survival targets, losses, and metrics — shared by every model.
 
-This is what makes the three-way comparison apples-to-apples: each arm produces
+This is what makes the three-way comparison apples-to-apples: each model produces
 a risk score per Subject, and the same target formulation, loss, and metric sit
 downstream of it regardless of whether that score came from a GNN, an MLP over
 flattened features, or the clinical baseline.
@@ -15,7 +15,7 @@ flattened features, or the clinical baseline.
 Locked by #3: Cox partial likelihood (continuous time), Efron ties, Study
 stratification, `Linear(d, 1, bias=False)` head, two-stage wiring
 (`torchsurv` trains the encoder, `lifelines.CoxPHFitter(strata=['study'])` is
-the one shared decoder every arm is refit and scored through).
+the one shared decoder every model is refit and scored through).
 """
 
 from __future__ import annotations

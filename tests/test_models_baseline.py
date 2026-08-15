@@ -1,4 +1,4 @@
-"""Tests for arm 1's orchestration (#9): `run_fold` / `run_all_folds` end to end.
+"""Tests for model 1's orchestration (#9): `run_fold` / `run_all_folds` end to end.
 
 A synthetic cohort, not the real 6,811-Subject one — `tests/README.md` asks
 for tests that do not need the live instance, and the real cohort is only
@@ -21,7 +21,7 @@ from gl_lifesphere.models.baseline.sanity_check import (
     pooled_out_of_sample_predictions,
     run_sanity_check,
 )
-from gl_lifesphere.models.baseline.train import BaselineArmConfig, run_all_folds, run_fold
+from gl_lifesphere.models.baseline.train import BaselineModelConfig, run_all_folds, run_fold
 from gl_lifesphere.survival.targets import SurvivalTarget
 
 N_STUDIES = 6
@@ -49,7 +49,7 @@ def _synthetic_raw_and_targets(seed: int = 0) -> tuple[pd.DataFrame, SurvivalTar
     # either bucket, and two constant-zero columns are exactly collinear,
     # which singularises the Cox fit. The real 6,811-Subject cohort always has
     # both buckets populated in every fold, so this is a fixture-realism fix
-    # rather than a change to arm 1's own code.
+    # rather than a change to model 1's own code.
     race = rng.choice(
         ["white", "asian", "black or african american", np.nan], size=n, p=[0.55, 0.2, 0.15, 0.1]
     )
@@ -111,7 +111,7 @@ class TestRunFold:
         raw_frame, targets, assignment = cohort
         split = fold_split(assignment, 0)
         result = run_fold(
-            0, raw=raw_frame, targets=targets, split=split, config=BaselineArmConfig()
+            0, raw=raw_frame, targets=targets, split=split, config=BaselineModelConfig()
         )
         assert set(result.test_predictions.index) == split.test
 
@@ -121,7 +121,7 @@ class TestRunFold:
         raw_frame, targets, assignment = cohort
         split = fold_split(assignment, 0)
         result = run_fold(
-            0, raw=raw_frame, targets=targets, split=split, config=BaselineArmConfig()
+            0, raw=raw_frame, targets=targets, split=split, config=BaselineModelConfig()
         )
         assert not any(c.startswith("condition_") for c in result.covariates)
         assert not any(c in SAMPLE_PROPORTION_COLUMNS for c in result.covariates)
@@ -132,7 +132,7 @@ class TestRunFold:
         raw_frame, targets, assignment = cohort
         split = fold_split(assignment, 0)
         result = run_fold(
-            0, raw=raw_frame, targets=targets, split=split, config=BaselineArmConfig()
+            0, raw=raw_frame, targets=targets, split=split, config=BaselineModelConfig()
         )
         payload = result.fold_metrics.to_dict()
         pooled_c = payload["pooled_harrell_c"]
@@ -151,7 +151,7 @@ class TestRunAllFolds:
         # this synthetic fixture does not persist to disk, so its 5-fold loop
         # is reproduced directly against the in-memory assignment instead.
         results = [
-            run_fold(i, raw=raw_frame, targets=targets, split=fold_split(assignment, i), config=BaselineArmConfig())
+            run_fold(i, raw=raw_frame, targets=targets, split=fold_split(assignment, i), config=BaselineModelConfig())
             for i in range(5)
         ]
         test_sets = [set(r.test_predictions.index) for r in results]

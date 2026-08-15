@@ -7,9 +7,9 @@ evidence of anything. So `TestReverseEdgesAreLoadBearing` runs the encoder doc
 
 The fixture is a synthetic cohort shaped like `data/interim/`, pushed through
 the *same* `cast.reduce_diagnoses` -> `features.raw.build_raw_frame` ->
-`fit_feature_contract` path the flattened arm uses. That matters more than it
-looks: the whole three-arm design rests on the two arms sharing one feature
-contract, so the graph arm's tests must not fit their features by a private
+`fit_feature_contract` path the flattened model uses. That matters more than it
+looks: the whole three-model design rests on the two models sharing one feature
+contract, so the graph model's tests must not fit their features by a private
 route.
 """
 
@@ -50,7 +50,7 @@ def records(interim: dict[str, pd.DataFrame]) -> cache.SubjectRecords:
 
 
 def _contract(interim: dict[str, pd.DataFrame], train: frozenset[str]) -> FeatureContract:
-    """Fit through the flattened arm's own path, never a private one."""
+    """Fit through the flattened model's own path, never a private one."""
     raw = build_raw_frame(
         members=interim["members"],
         subjects=interim["subjects"],
@@ -71,7 +71,7 @@ class TestSubjectRecords:
     ) -> None:
         """#4 §8: one cohort Subject has no Diagnosis at all. Iterating from the
         Diagnosis table instead of the roster would drop them silently, and the
-        arms would no longer train on an identical Subject set."""
+        models would no longer train on an identical Subject set."""
         assert NO_DIAGNOSIS in records.subject_ids
         record = records.record(NO_DIAGNOSIS)
         assert len(record.diagnoses) == 0

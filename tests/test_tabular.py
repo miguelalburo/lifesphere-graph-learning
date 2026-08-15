@@ -1,4 +1,4 @@
-"""End-to-end mechanics test for arm 2 (#10).
+"""End-to-end mechanics test for model 2 (#10).
 
 Not a result test — a small, fast, fully synthetic cohort exercising the whole
 two-stage pipeline (`fit_feature_contract` -> encoder training with early
@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 from gl_lifesphere.evaluation.splits import FoldSplit
-from gl_lifesphere.models.tabular import TabularArmConfig, run_fold
+from gl_lifesphere.models.tabular import TabularModelConfig, run_fold
 from gl_lifesphere.survival.targets import SurvivalTarget
 
 N_PER_STUDY = 30
@@ -84,7 +84,7 @@ class TestRunFold:
         self, synthetic_cohort: tuple[pd.DataFrame, SurvivalTarget, FoldSplit]
     ) -> None:
         raw, target, split = synthetic_cohort
-        config = TabularArmConfig(hidden_dims=(8,), d=4, max_epochs=15, patience=5, seed=0)
+        config = TabularModelConfig(hidden_dims=(8,), d=4, max_epochs=15, patience=5, seed=0)
 
         result = run_fold(0, raw=raw, targets=target, split=split, config=config)
 
@@ -101,7 +101,7 @@ class TestRunFold:
         randomly-initialised encoder, and the end-to-end score that is a
         by-product of stage one. Both must run on every fold."""
         raw, target, split = synthetic_cohort
-        config = TabularArmConfig(hidden_dims=(8,), d=4, max_epochs=15, patience=5, seed=0)
+        config = TabularModelConfig(hidden_dims=(8,), d=4, max_epochs=15, patience=5, seed=0)
 
         result = run_fold(0, raw=raw, targets=target, split=split, config=config)
 
@@ -118,7 +118,7 @@ class TestRunFold:
         """"Requires no training run at all" (#3 §3) — it must be exactly the
         pre-training weights, not an arbitrary untracked initialisation."""
         raw, target, split = synthetic_cohort
-        config = TabularArmConfig(hidden_dims=(8,), d=4, max_epochs=5, patience=5, seed=0)
+        config = TabularModelConfig(hidden_dims=(8,), d=4, max_epochs=5, patience=5, seed=0)
 
         first = run_fold(0, raw=raw, targets=target, split=split, config=config)
         second = run_fold(0, raw=raw, targets=target, split=split, config=config)
@@ -133,7 +133,7 @@ class TestRunFold:
         import json
 
         raw, target, split = synthetic_cohort
-        config = TabularArmConfig(hidden_dims=(8,), d=4, max_epochs=10, patience=5, seed=0)
+        config = TabularModelConfig(hidden_dims=(8,), d=4, max_epochs=10, patience=5, seed=0)
 
         result = run_fold(0, raw=raw, targets=target, split=split, config=config)
         # `default=str` covers the numpy/study-key edge cases; this just pins
@@ -144,7 +144,7 @@ class TestRunFold:
         self, synthetic_cohort: tuple[pd.DataFrame, SurvivalTarget, FoldSplit]
     ) -> None:
         raw, target, split = synthetic_cohort
-        config = TabularArmConfig(hidden_dims=(8,), d=4, max_epochs=10, patience=5, seed=0)
+        config = TabularModelConfig(hidden_dims=(8,), d=4, max_epochs=10, patience=5, seed=0)
 
         first = run_fold(0, raw=raw, targets=target, split=split, config=config)
         second = run_fold(0, raw=raw, targets=target, split=split, config=config)

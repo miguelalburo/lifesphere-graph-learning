@@ -22,7 +22,7 @@ numpy==2.5.1
 scipy==1.18.0
 pandas==2.3.3
 
-# --- deep learning (arms 2 and 3) ---
+# --- deep learning (models 2 and 3) ---
 torch==2.13.0
 torch-geometric==2.8.0.post1
 
@@ -33,7 +33,7 @@ torchsurv==0.2.0
 torchmetrics==1.9.0
 
 # lifelines.CoxPHFitter(penalizer=L, l1_ratio=0, strata=['study']) is the single
-# decoder every arm is refitted and scored through, and supplies
+# decoder every model is refitted and scored through, and supplies
 # proportional_hazard_test (Schoenfeld residuals). It is also what caps pandas
 # at <3.0.
 #
@@ -46,7 +46,7 @@ lifelines==0.30.3
 
 # scikit-survival supplies the metrics -- Uno's IPCW C-index and the integrated
 # Brier score -- plus Random Survival Forest, which is viable only as an
-# *additional* arm.
+# *additional* model.
 #
 # Its CoxnetSurvivalAnalysis is ruled out as the decoder: it has no `strata`
 # parameter, so adopting it would silently reverse the stratification decision
@@ -55,7 +55,7 @@ lifelines==0.30.3
 # Its concordance index agrees with torchsurv's to 6 decimals on identical risk
 # scores. lifelines.utils.concordance_index does NOT: it takes a predicted
 # *time*, not a risk, so it returns 1 - C and reads as a bad model rather than
-# raising. It is banned in arm code (#3 §6); tests pin the trap.
+# raising. It is banned in model code (#3 §6); tests pin the trap.
 scikit-survival==0.28.0
 scikit-learn==1.9.0
 

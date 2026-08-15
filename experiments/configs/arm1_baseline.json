@@ -1,7 +1,0 @@
-{
-  "_comment": "Arm 1: clinical baseline (#9). Penalised Study-stratified lifelines.CoxPHFitter decoder locked by #3, model class settled by #8. Covariate set: sexAtBirth, race, stageOrdinal, ageAtDiagnosisYears, conditionSubtype -- the staging/pathology subset of #4's shared feature contract (Sample-type proportions and the Condition columns excluded, per #4 §4 and a direct measurement recorded in gl_lifesphere/models/baseline/train.py; the Condition feature keys on conditionId since #12, which only hardens that exclusion).",
-  "arm": "arm1_baseline",
-  "endpoint": "OS",
-  "split": "5fold_study_stratified_seed0",
-  "seed": 0
-}

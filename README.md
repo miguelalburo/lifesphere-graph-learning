@@ -45,7 +45,7 @@ uv pip install -r requirements.txt --python .venv/bin/python --torch-backend=cpu
 `requirements.txt` for the plain-`pip` equivalent.
 
 Verify the install with `.venv/bin/python -m pytest` — the suite pins the
-dependency properties the three-arm comparison relies on and touches nothing
+dependency properties the three-model comparison relies on and touches nothing
 outside the venv.
 
 Add Neo4j credentials to a `.env` file at the repo root (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`) — see [Data](#data).
@@ -55,15 +55,15 @@ Add Neo4j credentials to a `.env` file at the repo root (`NEO4J_URI`, `NEO4J_USE
 ```
 gl_lifesphere/        importable package (run Python from the repo root)
   extract/            read-only Cypher pulls from the live Neo4j graph
-  features/           encoding + missing-data strategies, shared by all arms
+  features/           encoding + missing-data strategies, shared by all models
   constructions/      graph construction builders (subject subgraph, similarity, hetero)
   models/
-    baseline/         arm 1 — clinical staging/pathology benchmark
-    tabular/          arm 2 — flattened one-row-per-Subject control
-    graph/            arm 3 — GL/GNN encoders over the constructions
-  survival/           censored targets, losses, and metrics — identical across arms
-  evaluation/         Study-stratified splits, cross-arm comparison, interpretation
-experiments/configs/  one config per run (arm, construction, endpoint, split, seed)
+    baseline/         model 1 — clinical staging/pathology benchmark
+    tabular/          model 2 — flattened one-row-per-Subject control
+    graph/            model 3 — GL/GNN encoders over the constructions
+  survival/           censored targets, losses, and metrics — identical across models
+  evaluation/         Study-stratified splits, cross-model comparison, interpretation
+experiments/configs/  one config per run (model, construction, endpoint, split, seed)
 data/                 raw/ interim/ processed/ — gitignored working data
 results/              metrics/ figures/ — gitignored run outputs
 notebooks/            exploratory analysis

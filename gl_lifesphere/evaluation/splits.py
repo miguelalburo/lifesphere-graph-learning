@@ -1,8 +1,8 @@
 """The 5-fold Study-stratified split protocol, split at Subject level (#7).
 
 Settled on the map (#1): 5-fold Study-stratified CV, split at Subject level,
-with a nested validation slice for early stopping on the neural arms, at a
-fixed seed. All three arms consume the identical fold assignment, which is
+with a nested validation slice for early stopping on the neural models, at a
+fixed seed. All three models consume the identical fold assignment, which is
 persisted rather than re-derived — a seed alone is not enough once library
 versions move (`TestPersistence` in `tests/test_evaluation.py` pins that a
 fresh `freeze()` reproduces the same folds a stale `StratifiedKFold` update
@@ -138,7 +138,7 @@ def freeze(
     """Compute the fold assignment and persist it to `destination`.
 
     Written beside the cohort it splits (`data/processed/cohort_os/` by
-    default) so every arm reads one file rather than recomputing `assign_folds`
+    default) so every model reads one file rather than recomputing `assign_folds`
     with the risk of a library version drifting the result.
     """
     target = destination if destination is not None else FOLDS_DIR

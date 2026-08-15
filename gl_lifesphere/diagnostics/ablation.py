@@ -1,4 +1,4 @@
-"""Diagnostic one: retrain arm 3 with every `edge_index` emptied (encoder doc §7).
+"""Diagnostic one: retrain model 3 with every `edge_index` emptied (encoder doc §7).
 
 "Train an identical model with all `edge_index` tensors emptied, so every
 relation-sum is zero and the root sees only its own demographics. If the full
@@ -10,7 +10,7 @@ explains why that matters). What changes is that each `W_r` now aggregates over
 an empty neighbourhood and, the convolutions being bias-free, contributes
 exactly `0`. The bare-identity residual is the only surviving path to the
 readout, which makes this rung **−1** of encoder doc §4's ladder: below even
-arm 2's flattened MLP, since the root's own feature block is all that reaches
+model 2's flattened MLP, since the root's own feature block is all that reaches
 `z_G`.
 
 **What this test does and does not settle.** It is the §7 control, and it
@@ -20,8 +20,8 @@ because #12 left that second question open at +0.0180 with an interval crossing
 zero. On this construction stage sits on Diagnosis and cancer type on Condition,
 so severing the edges takes away the encoder's access to the features
 themselves rather than only to their arrangement — the ablated model is rung −1,
-below arm 2, and beating it is a much weaker claim than beating a flat encoding
-of the same data. **Arm 2 remains the control for the structural question.**
+below model 2, and beating it is a much weaker claim than beating a flat encoding
+of the same data. **Model 2 remains the control for the structural question.**
 
 **Reading a failure.** If the full encoder does not clear the ablation, §7 names
 the §2.1 reverse-edge bug as the first suspect — but that suspect is already
@@ -43,7 +43,7 @@ from ..constructions import cache
 from ..evaluation.compare import PairedDelta, paired_delta
 from ..evaluation.splits import N_SPLITS, fold_split, load_folds
 from ..features import assemble_raw_frame
-from ..models.graph.train import ARM, GraphArmConfig, FoldResult, run_fold
+from ..models.graph.train import MODEL, GraphModelConfig, FoldResult, run_fold
 from ..survival import metrics
 from ..survival.targets import SurvivalTarget, load_targets
 from . import recorded
@@ -53,9 +53,9 @@ METRIC = metrics.HEADLINE
 
 @dataclass(frozen=True)
 class AblationResult:
-    """The ablated arm-3 run, paired fold-for-fold against the recorded full arm 3."""
+    """The ablated model-3 run, paired fold-for-fold against the recorded full model 3."""
 
-    config: GraphArmConfig
+    config: GraphModelConfig
     full_per_fold: tuple[float, ...]
     ablated_per_fold: tuple[float, ...]
     delta: PairedDelta
@@ -68,7 +68,7 @@ class AblationResult:
         return {
             "diagnostic": "structure_ablation",
             "description": (
-                "Arm 3 retrained with every edge_index emptied (encoder doc §7). Identical "
+                "Model 3 retrained with every edge_index emptied (encoder doc §7). Identical "
                 "features, identical relation set and parameter count, identical seed and cached "
                 "construction -- the edges are the only difference."
             ),
@@ -76,11 +76,11 @@ class AblationResult:
                 "Whether structure beats flattening. Stage lives on Diagnosis and cancer type "
                 "on Condition, so removing the edges removes the encoder's access to those "
                 "features rather than only to their arrangement: the ablated model is rung -1 "
-                "of encoder doc §4's ladder, below arm 2. Arm 2 vs arm 3 is the structural "
+                "of encoder doc §4's ladder, below model 2. Model 2 vs model 3 is the structural "
                 "comparison, and it is a different and much closer number."
             ),
             # `experiments/README.md`: a run is only useful if it is pinned down
-            # enough to line up against the others, and the arm this is paired
+            # enough to line up against the others, and the model this is paired
             # against is recorded under a different config file.
             "config": recorded.comparable_fields(self.config),
             "metric": METRIC,
@@ -100,25 +100,25 @@ class AblationResult:
 
 
 def run_structure_ablation(
-    config: GraphArmConfig,
+    config: GraphModelConfig,
     *,
     records: cache.SubjectRecords | None = None,
     raw: pd.DataFrame | None = None,
     targets: SurvivalTarget | None = None,
-    full_arm: recorded.RecordedArm | None = None,
+    full_model: recorded.RecordedModel | None = None,
     use_cache: bool = True,
 ) -> AblationResult:
-    """Train the ablated arm across all 5 folds and pair it against the recorded full arm.
+    """Train the ablated model across all 5 folds and pair it against the recorded full model.
 
-    `config` is arm 3's own config with `ablate_edges` forced on, so the two
+    `config` is model 3's own config with `ablate_edges` forced on, so the two
     sides of the comparison cannot drift: everything the encoder and the
     construction read comes from the same dataclass, and `check_comparable`
-    refuses to proceed if the recorded arm was run under different settings.
+    refuses to proceed if the recorded model was run under different settings.
     """
     ablated_config = replace(config, ablate_edges=True)
-    arm = full_arm if full_arm is not None else recorded.load_arm(ARM)
+    model = full_model if full_model is not None else recorded.load_model(MODEL)
     recorded.check_comparable(
-        arm, recorded.comparable_fields(ablated_config), varies=("ablate_edges",)
+        model, recorded.comparable_fields(ablated_config), varies=("ablate_edges",)
     )
 
     subject_records = records if records is not None else cache.load_subject_records()
@@ -144,13 +144,13 @@ def run_structure_ablation(
             # of the control -- measured at 0.469 in-sample on fold 0 -- and a
             # check that raises on it would make the diagnostic unrunnable
             # exactly when it has something to report. (This is not the reading
-            # for the *full* arm, which keeps the check.)
+            # for the *full* model, which keeps the check.)
             expect_discrimination=False,
         )
         for outer_fold in range(N_SPLITS)
     )
 
-    full_per_fold = arm.metric(METRIC)
+    full_per_fold = model.metric(METRIC)
     ablated_per_fold = [float(f.fold_metrics.within_study.cindex) for f in ablated]
     return AblationResult(
         config=ablated_config,

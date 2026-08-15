@@ -1,10 +1,10 @@
-"""Evaluation protocol and cross-arm reporting.
+"""Evaluation protocol and cross-model reporting.
 
 - splits      Study-stratified splitting. A naive random split is not adequate:
               Study size varies ~21.5x (BRCA 1,098 vs. CHOL 51), so a pan-cancer
               number is otherwise dominated by the largest Studies.
 - compare     The paired across-fold difference every question in this study
-              reduces to — arm against arm, and #13's controls against the arm
+              reduces to — model against model, and #13's controls against the model
               they control. Carries its own anti-conservativeness caveat as a
               field, because the folds share training Subjects.
 - interpret   Feature/biomarker attribution — the "does LifeSphere's schema

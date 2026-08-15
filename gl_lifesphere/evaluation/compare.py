@@ -1,9 +1,9 @@
 """Paired across-fold comparison of two runs, with the caveat attached to it.
 
 Every question this study asks is a difference between two runs scored on the
-same 5 folds — arm against arm, full encoder against #13's ablation, real label
+same 5 folds — model against model, full encoder against #13's ablation, real label
 against a permuted one. Pairing by fold is the right estimator for that, and it
-lives here rather than in any one arm because #13 and #14 both need the same
+lives here rather than in any one model because #13 and #14 both need the same
 arithmetic and must not each write their own.
 
 **The interval this produces is anti-conservative, and that is a property of the

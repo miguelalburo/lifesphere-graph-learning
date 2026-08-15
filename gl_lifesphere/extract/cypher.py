@@ -23,7 +23,7 @@ from __future__ import annotations
 # The 20 Studies where AJCC pathologic staging is present, per the map (#1) and
 # verified live on 2026-08-08. Staging coverage is bimodal by Study — 13 Studies
 # sit at 0–2.3% and these 20 sit at 85.98–100%, with nothing in between — so
-# admitting a Study on "stage unknown" would hand every arm a near-perfect
+# admitting a Study on "stage unknown" would hand every model a near-perfect
 # cancer-type proxy.
 #
 # This is a literal list and not a `>= 0.86` filter for a measured reason:
@@ -193,7 +193,7 @@ ORDER BY subjectId, diagnosisId, pathologyDetailId
 Kept as a featureless structural node: `necrosisPercent` is absent from every
 cohort row (all 84 nodes carrying it graph-wide fall outside the cohort), the
 node is non-prognostic, and it is not a cancer-type channel (#4 §5). It is
-pulled because the graph arm's construction needs the nodes and edges, not
+pulled because the graph model's construction needs the nodes and edges, not
 because it contributes a feature.
 
 `HAS_PATHOLOGY` is **not** 1:1 with Diagnosis — 1,734 Diagnoses reach 2–6

@@ -1,20 +1,20 @@
-"""Arm 1 — the shared decoder fit directly on clinical covariates (#9, #3 §3, #8).
+"""Model 1 — the shared decoder fit directly on clinical covariates (#9, #3 §3, #8).
 
-No stage one. Arms 2 and 3 train an encoder and freeze it before refitting the
-shared decoder on `z`; arm 1 *is* the shared decoder, `lifelines.CoxPHFitter
+No stage one. Models 2 and 3 train an encoder and freeze it before refitting the
+shared decoder on `z`; model 1 *is* the shared decoder, `lifelines.CoxPHFitter
 (penalizer=lambda, l1_ratio=0, strata=['study'])`, fit directly on staging and
 pathology covariates — the model class and covariate set #8 settled. Every
 other mechanic (fold structure, `lambda` selection, risk-score convention,
-scoring) is identical to arm 2's stage two, by construction: both call through
+scoring) is identical to model 2's stage two, by construction: both call through
 `gl_lifesphere.survival.decoder` and `gl_lifesphere.survival.metrics`.
 
-`baseline_columns` is the one piece of logic specific to this arm: it takes
+`baseline_columns` is the one piece of logic specific to this model: it takes
 `features.FeatureContract`'s full shared design matrix (#4) and selects the
 subset `CONTEXT.md`'s Baseline definition ("staging and pathology features
 only, no molecular data") allows:
 
 - **`p_*` (Sample-type proportions) excluded.** #4 §4 states explicitly that
-  arms 2 and 3 carry that ascertainment channel and "arm 1 does not" — it is
+  models 2 and 3 carry that ascertainment channel and "model 1 does not" — it is
   a specimen-composition signal, not a staging/pathology one.
 - **`condition_*` excluded — a judgement call, not a direct reading of #4.**
   (Read `conditionName` for `conditionId` throughout this paragraph: the
@@ -22,10 +22,10 @@ only, no molecular data") allows:
   exclusion only hardens — keying on `conditionId` raises R²_study from 0.772
   to 0.948 and the level count from ~28 to 121, so both the collinearity
   symptom and the parameter cost get worse, not better.)
-  #4 §6's general contract keeps `Condition` for every arm
+  #4 §6's general contract keeps `Condition` for every model
   ("Condition and conditionSubtype are both kept, with Condition flagged"),
   reasoned safe there because the *headline* metric is immune to a pure
-  Study proxy by construction. #8's own covariate enumeration for this arm,
+  Study proxy by construction. #8's own covariate enumeration for this model,
   though, never names it ("stage ordinal I-IV, age, conditionSubtype,
   histological type"). Measured directly on the frozen cohort with #4 §7's
   own method (5-fold CV, stratified penalised Cox, within-Study Harrell C)
@@ -36,7 +36,7 @@ only, no molecular data") allows:
   diagnosed for `conditionSubtype`/`diagnosisMethod`), and moves within-Study
   C from 0.6556 to 0.6542 — 0.0014, an order of magnitude under the ~0.02
   fold-noise resolution limit #3 §5 established. Excluded on that basis:
-  #4 §6's safety argument does not extend to a linear arm carrying the risk
+  #4 §6's safety argument does not extend to a linear model carrying the risk
   of near-singular coefficients for zero measurable benefit.
 - Study is already the Cox stratum (#3 §1) and never a covariate; a
   near-duplicate of the stratum (`conditionName`) fighting into the design
@@ -60,10 +60,10 @@ from ...survival import decoder, metrics
 from ...survival.targets import SurvivalTarget, load_targets
 
 
-# Named here rather than only in `__main__` so callers that run this arm as one
+# Named here rather than only in `__main__` so callers that run this model as one
 # of several — #13's label shuffle retrains all three — can address it the same
-# way they address arms 2 and 3.
-ARM = "arm1_baseline"
+# way they address models 2 and 3.
+MODEL = "model1_baseline"
 
 
 def baseline_columns(contract: FeatureContract) -> list[str]:
@@ -78,8 +78,8 @@ def baseline_columns(contract: FeatureContract) -> list[str]:
 
 
 @dataclass(frozen=True)
-class BaselineArmConfig:
-    """Arm 1 has no learned representation, so `penalty_grid` is the only real
+class BaselineModelConfig:
+    """Model 1 has no learned representation, so `penalty_grid` is the only real
     hyperparameter; `seed` is carried for the config traceability #9 asks for
     even though nothing here is stochastic (the Cox fit is deterministic)."""
 
@@ -87,7 +87,7 @@ class BaselineArmConfig:
     penalty_grid: tuple[float, ...] = decoder.PENALTY_GRID
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> "BaselineArmConfig":
+    def from_dict(cls, payload: dict[str, object]) -> "BaselineModelConfig":
         """Ignores keys the dataclass does not declare (e.g. a `_comment`)."""
         known = {f.name for f in fields(cls)}
         kwargs = {key: value for key, value in payload.items() if key in known}
@@ -120,8 +120,8 @@ def _drop_zero_variance_training_columns(train_design: pd.DataFrame, columns: li
     which singularises the Cox Hessian (`lifelines.exceptions.ConvergenceError:
     delta contains nan value(s)`, reproduced against the frozen cohort's fold
     0). Dropping it is strictly correct for a penalised regression regardless
-    of where the constant column came from, so this stays in arm 1's own code
-    rather than changing the shared contract's column list for every arm.
+    of where the constant column came from, so this stays in model 1's own code
+    rather than changing the shared contract's column list for every model.
     """
     return [column for column in columns if train_design[column].nunique(dropna=False) > 1]
 
@@ -129,7 +129,7 @@ def _drop_zero_variance_training_columns(train_design: pd.DataFrame, columns: li
 @dataclass(frozen=True)
 class FoldResult:
     fold: int
-    config: BaselineArmConfig
+    config: BaselineModelConfig
     contract: FeatureContract = field(repr=False)
     covariates: tuple[str, ...]
     penalty_selection: decoder.PenaltySelection
@@ -156,15 +156,15 @@ def run_fold(
     raw: pd.DataFrame,
     targets: SurvivalTarget,
     split: FoldSplit,
-    config: BaselineArmConfig,
+    config: BaselineModelConfig,
     expect_discrimination: bool = True,
 ) -> FoldResult:
     """One outer fold: fit contract on inner-train -> select lambda -> fit -> score.
 
     The feature contract is fit on `split.train` alone, excluding `split.val`
-    — matching arm 2's own implementation (`gl_lifesphere/models/tabular/train.py`)
+    — matching model 2's own implementation (`gl_lifesphere/models/tabular/train.py`)
     so the nested validation slice sees only train-fitted statistics on both
-    arms, not just the one with an encoder to early-stop.
+    models, not just the one with an encoder to early-stop.
 
     `expect_discrimination=False` belongs to #13's label shuffle alone; see
     `survival.two_stage.two_stage_score`.
@@ -201,7 +201,7 @@ def run_fold(
         penalizer=selection.chosen_penalizer,
     )
 
-    # #3 §6: every arm must self-check its training-fold score before trusting
+    # #3 §6: every model must self-check its training-fold score before trusting
     # the held-out one -- a sign-inverted risk silently produces `1 - C`.
     train_risk = decoder.risk_scores(fit, x_trainval, study=trainval_target.study)
     if expect_discrimination:
@@ -209,7 +209,7 @@ def run_fold(
             trainval_target.event,
             trainval_target.time,
             train_risk,
-            where=f"arm1 fold {outer_fold} (train+val)",
+            where=f"model1 fold {outer_fold} (train+val)",
         )
 
     test_risk = decoder.risk_scores(fit, x_test, study=test_target.study)
@@ -250,7 +250,7 @@ def run_fold(
 
 
 def run_all_folds(
-    config: BaselineArmConfig,
+    config: BaselineModelConfig,
     *,
     raw: pd.DataFrame | None = None,
     targets: SurvivalTarget | None = None,

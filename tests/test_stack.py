@@ -1,7 +1,7 @@
 """Contract tests for the modelling stack pinned in requirements.txt.
 
 These are not unit tests of project code — there is none yet. They pin the
-properties of the *dependencies* that the three-arm comparison relies on, so an
+properties of the *dependencies* that the three-model comparison relies on, so an
 upgrade that quietly breaks one fails here rather than in a result table.
 
 Nothing here touches the live Neo4j instance (see tests/README.md).
@@ -98,7 +98,7 @@ def _lifelines_stratified_fit(
     time: np.ndarray,
     penalizer: float = 0.0,
 ) -> "CoxPHFitter":
-    """Fit the decoder every arm is scored through (#3 §3)."""
+    """Fit the decoder every model is scored through (#3 §3)."""
     from lifelines import CoxPHFitter
 
     fitter = CoxPHFitter(penalizer=penalizer, l1_ratio=0.0, strata=["study"])
@@ -140,7 +140,7 @@ def _torchsurv_stratified_pll(
 
 
 class TestStackPresent:
-    """Every library the arms are built on imports at the pinned version."""
+    """Every library the models are built on imports at the pinned version."""
 
     def test_imports_resolve(self) -> None:
         import lifelines
@@ -190,12 +190,12 @@ class TestStackPresent:
 
 
 class TestConcordanceIsShared:
-    """The arms must be scored by one implementation, not two that agree roughly.
+    """The models must be scored by one implementation, not two that agree roughly.
 
-    Arm code never calls these metrics directly — #3 §6 routes all scoring
+    Model code never calls these metrics directly — #3 §6 routes all scoring
     through one entry point in ``gl_lifesphere/survival/``. What these tests
     establish is that the entry point is free to use either library, so the
-    choice is an implementation detail rather than something a cross-arm delta
+    choice is an implementation detail rather than something a cross-model delta
     could depend on.
     """
 
@@ -329,7 +329,7 @@ class TestSurvivalLoss:
 class TestRiskScoreConventions:
     """The risk score's scale is free; its sign is not (#3 §6).
 
-    Convention: higher ``r`` = higher hazard = shorter survival. Arms 1-3 emit
+    Convention: higher ``r`` = higher hazard = shorter survival. Models 1-3 emit
     ``r`` from different code, so the properties the shared scorer relies on are
     pinned here rather than assumed.
     """
@@ -347,9 +347,9 @@ class TestRiskScoreConventions:
         return float(concordance_index_censored(event, time, score)[0])
 
     def test_concordance_ignores_scale_and_monotone_transforms(self) -> None:
-        """Arms need not agree on units — only on ordering.
+        """Models need not agree on units — only on ordering.
 
-        This is what lets a neural arm's raw logit and a Cox arm's log partial
+        This is what lets a neural model's raw logit and a Cox model's log partial
         hazard go into the same metric without rescaling.
         """
         risk, event, time = self._planted_risk()
@@ -371,7 +371,7 @@ class TestRiskScoreConventions:
         It takes a predicted *survival time*, not a risk, so handing it ``r``
         returns ``1 - C`` — roughly 0.29 where the truth is 0.71. That does not
         raise; it reads as a bad model, which is why #3 §6 bans the function in
-        arm code and routes all scoring through one entry point instead.
+        model code and routes all scoring through one entry point instead.
 
         The assertion is deliberately two-sided: it fails both if lifelines ever
         flips to the risk convention (silently un-banning it) and if sksurv
@@ -394,9 +394,9 @@ class TestObjectiveAgreement:
     This is the assumption the whole two-library split rests on (#3 §3):
     ``torchsurv`` supplies the differentiable stratified loss that trains the
     encoder, and ``lifelines.CoxPHFitter(strata=['study'])`` is the single
-    decoder every arm is refitted through. If the two objectives drift apart, a
-    version bump silently puts the three arms on different targets and any
-    cross-arm delta stops being attributable to the representation.
+    decoder every model is refitted through. If the two objectives drift apart, a
+    version bump silently puts the three models on different targets and any
+    cross-model delta stops being attributable to the representation.
     """
 
     # Measured at these pins: Efron agrees to ~4e-5 (float32 rounding inside
@@ -488,7 +488,7 @@ class TestObjectiveAgreement:
         stratified partial log-likelihoods across folds. Reading
         ``log_likelihood_`` for that comparison would silently compare
         *penalised* objectives, so a λ that shrinks harder would look worse than
-        it is and selection would bias toward small λ. Arm code must recompute
+        it is and selection would bias toward small λ. Model code must recompute
         the partial likelihood at the fitted coefficients instead — which is
         what the agreement above licenses.
         """
@@ -509,7 +509,7 @@ class TestDecoder:
     """The shared decoder is lifelines, not scikit-survival.
 
     #3 §3 makes ``lifelines.CoxPHFitter(penalizer=λ, l1_ratio=0,
-    strata=['study'])`` the single decoder every arm is refitted and scored
+    strata=['study'])`` the single decoder every model is refitted and scored
     through, and rules out ``sksurv.CoxnetSurvivalAnalysis`` because it has no
     ``strata`` parameter. These tests exercise the decoder that was chosen.
     """

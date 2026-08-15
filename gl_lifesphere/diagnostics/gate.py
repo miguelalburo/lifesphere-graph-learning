@@ -14,10 +14,10 @@ judgement call:
   the full encoder to "clearly beat" the ablation, and 5 correlated folds cannot
   resolve a difference below that, so "clearly" cannot mean less.
 - **Degree-probe ceiling, 0.55.** #13 says the counts are excluded from every
-  arm "precisely so this probe should come out weak", so the bar is the top of
+  model "precisely so this probe should come out weak", so the bar is the top of
   the chance band and nothing else: 0.5 plus three standard errors of a C-index
   on ~1,360 held-out Subjects (~0.017 each). Deliberately *not* derived from
-  how the arms scored — a threshold read off the numbers it is meant to gate is
+  how the models scored — a threshold read off the numbers it is meant to gate is
   not a declared threshold.
 - **Shuffle tolerance, 0.05.** The same three standard errors, for the same
   reason: §7 asks for "~0.5", and this is wide enough not to fail on a single
@@ -38,10 +38,10 @@ from pathlib import Path
 import numpy as np
 
 from ..models import training
-from ..models.baseline.train import BaselineArmConfig
-from ..models.graph.train import ARM as GRAPH_ARM
-from ..models.graph.train import GraphArmConfig
-from ..models.tabular.train import TabularArmConfig
+from ..models.baseline.train import BaselineModelConfig
+from ..models.graph.train import MODEL as GRAPH_MODEL
+from ..models.graph.train import GraphModelConfig
+from ..models.tabular.train import TabularModelConfig
 from ..survival import metrics
 from .shuffle import GLOBAL, SCHEMES
 
@@ -75,12 +75,12 @@ class GateConfig:
     def check(self) -> None:
         """Raise unless this config declares the run it will actually get.
 
-        The same rule `training.check_run_identity` applies to every arm, and
+        The same rule `training.check_run_identity` applies to every model, and
         the gate needs it for the same reason: the loaders read the frozen
         cohort and the persisted fold assignment regardless of what a config
         says, so a gate declaring `"endpoint": "PFI"` would pass or fail OS
         results under a PFI label. Spelled out here rather than delegated
-        because the gate has no single arm to name.
+        because the gate has no single model to name.
         """
         expected_split = training.locked_split_name()
         problems = [
@@ -99,24 +99,24 @@ class GateConfig:
         if detail:
             raise ValueError(f"trust gate declares a run it will not get -- {detail}.")
 
-    def arm_configs(
+    def model_configs(
         self, directory: Path
-    ) -> tuple[BaselineArmConfig, TabularArmConfig, GraphArmConfig]:
-        """The three arms' configs, read from the arms' **own** config files.
+    ) -> tuple[BaselineModelConfig, TabularModelConfig, GraphModelConfig]:
+        """The three models' configs, read from the models' **own** config files.
 
-        The gate retrains each arm under a permuted label, so it has to build
+        The gate retrains each model under a permuted label, so it has to build
         them exactly as their own runs did. That means reading
-        `experiments/configs/arm{1,2,3}_*.json` directly: a copy of those
+        `experiments/configs/model{1,2,3}_*.json` directly: a copy of those
         hyperparameters inside the gate's config would be a second place to
         change them, and a second place that nothing checks. It would also drift
-        silently — the shuffle has no `check_comparable` equivalent, so an arm
+        silently — the shuffle has no `check_comparable` equivalent, so a model
         rebuilt from stale numbers would produce a control for a model nobody
         ran.
         """
         return (
-            BaselineArmConfig.from_dict(_read(directory / "arm1_baseline.json")),
-            TabularArmConfig.from_dict(_read(directory / "arm2_tabular.json")),
-            GraphArmConfig.from_dict(_read(directory / f"{GRAPH_ARM}.json")),
+            BaselineModelConfig.from_dict(_read(directory / "model1_baseline.json")),
+            TabularModelConfig.from_dict(_read(directory / "model2_tabular.json")),
+            GraphModelConfig.from_dict(_read(directory / f"{GRAPH_MODEL}.json")),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -134,7 +134,7 @@ class GateConfig:
 
 @dataclass(frozen=True)
 class GateInputs:
-    """The three diagnostics' recorded results, plus the arms they are judged beside.
+    """The three diagnostics' recorded results, plus the models they are judged beside.
 
     **Held as the serialised dicts, not as the result objects, and that is the
     point.** What the gate judges is then literally what was written to
@@ -152,16 +152,16 @@ class GateInputs:
     ablation: dict[str, object]
     degree_probe: dict[str, object]
     label_shuffle: dict[str, object]
-    arm_means: dict[str, float]
+    model_means: dict[str, float]
 
     @classmethod
-    def from_files(cls, directory: Path, *, arm_means: dict[str, float]) -> "GateInputs":
+    def from_files(cls, directory: Path, *, model_means: dict[str, float]) -> "GateInputs":
         """Re-read the three diagnostics from a previous run's output directory."""
         return cls(
             ablation=_read(directory / "structure_ablation.json"),
             degree_probe=_read(directory / "degree_probe.json"),
             label_shuffle=_read(directory / "label_shuffle.json"),
-            arm_means=arm_means,
+            model_means=model_means,
         )
 
 
@@ -265,11 +265,11 @@ def assess_ablation(inputs: GateInputs, config: GateConfig) -> Verdict:
                 "Message passing contributes beyond the root's own features. "
                 "**This does not establish that structure beats flattening, and it must not be "
                 "quoted as if it did.** The ablated encoder is rung -1 of encoder doc §4's "
-                "ladder -- below arm 2 -- because stage lives on Diagnosis and cancer type on "
+                "ladder -- below model 2 -- because stage lives on Diagnosis and cancer type on "
                 "Condition, so severing the edges removes the encoder's access to the features "
                 "themselves, not merely to their arrangement. What it proves is that the edges "
                 "are load-bearing for reaching the data at all. The question of whether passing "
-                "messages over those features beats flattening them is arm 2 vs arm 3, which is "
+                "messages over those features beats flattening them is model 2 vs model 3, which is "
                 "a different comparison and is still inside the noise floor (+0.0180, CI crosses "
                 "zero, #12)."
             )
@@ -279,8 +279,8 @@ def assess_ablation(inputs: GateInputs, config: GateConfig) -> Verdict:
                 "reverse-edge bug as the first suspect, but that is already ruled out -- "
                 "tests/test_constructions.py runs the reverse-edge negative control live. So "
                 "this is message-passing.md §9.3's pre-registered prior rather than a defect: "
-                "on the clinical-only schema there is no structure to learn, and arm 3's margin "
-                "over arm 2 is capacity rather than structure."
+                "on the clinical-only schema there is no structure to learn, and model 3's margin "
+                "over model 2 is capacity rather than structure."
             )
         ),
         detail={
@@ -320,7 +320,7 @@ def _consistent_covariates(degree_probe: dict[str, object], *, direction: int) -
 
 def assess_degree_probe(inputs: GateInputs, config: GateConfig) -> Verdict:
     """PASS when the accrual counts alone stay weak — the exclusion rule held."""
-    arm_means = inputs.arm_means
+    model_means = inputs.model_means
     probe = float(np.mean(_floats(inputs.degree_probe, "per_fold")))
     passed = probe < config.degree_probe_ceiling
     # Split by direction, because the two directions have opposite meanings.
@@ -335,51 +335,51 @@ def assess_degree_probe(inputs: GateInputs, config: GateConfig) -> Verdict:
         threshold=config.degree_probe_ceiling,
         rule=f"PASS if the probe's mean {METRIC} < {config.degree_probe_ceiling}",
         reading=(
-            "Accrual alone is weak, so #4 §4's exclusion of the counts held and no arm is "
+            "Accrual alone is weak, so #4 §4's exclusion of the counts held and no model is "
             "materially reading follow-up duration through them."
             if passed
             else (
                 "Accrual alone is strongly prognostic, so the floor a structural result has to "
                 "clear is high -- read `decomposition` and the hazard-ratio directions before "
-                "concluding anything about the arms. A PROTECTIVE count is encoder doc §0's "
-                "immortal-time bias and is a defect wherever an arm can see it; a HARMFUL count "
+                "concluding anything about the models. A PROTECTIVE count is encoder doc §0's "
+                "immortal-time bias and is a defect wherever a model can see it; a HARMFUL count "
                 "is disease burden and is ordinary prognostic signal that raises the floor "
-                "without implying a leak. The arms' own exposure is the separate question: "
+                "without implying a leak. The models' own exposure is the separate question: "
                 "tests/test_diagnostics.py pins that none of these columns is in the shared "
-                "design matrix, so a strong probe is only a leak where an arm can reconstruct "
+                "design matrix, so a strong probe is only a leak where a model can reconstruct "
                 "the count some other way."
             )
         ),
         detail={
             "floor_for_a_structural_result": probe,
-            "arm_means": arm_means,
-            "arms_clearing_the_floor": sorted(
-                arm for arm, mean in arm_means.items() if mean > probe
+            "model_means": model_means,
+            "models_clearing_the_floor": sorted(
+                model for model, mean in model_means.items() if mean > probe
             ),
             "margin_over_the_floor": {
-                arm: mean - probe for arm, mean in sorted(arm_means.items())
+                model: mean - probe for model, mean in sorted(model_means.items())
             },
             "decomposition": inputs.degree_probe.get("decomposition", {}),
             "protective_covariates_p_lt_0.05": protective,
             "harmful_covariates_p_lt_0.05": harmful,
-            # A strong probe only implicates an arm that can actually see the
+            # A strong probe only implicates a model that can actually see the
             # count. None of these columns is in the shared design matrix
             # (pinned in tests/test_diagnostics.py), so the question is whether
-            # an arm can reconstruct one some other way.
-            "arm_exposure_to_the_counts": {
-                "arm1_baseline": "None. Its covariate set is staging and pathology only (#8).",
-                "arm2_tabular": (
+            # a model can reconstruct one some other way.
+            "model_exposure_to_the_counts": {
+                "model1_baseline": "None. Its covariate set is staging and pathology only (#8).",
+                "model2_tabular": (
                     "None directly. It carries Sample-type *proportions* (p_*), which are "
                     "ratios over a Subject's baseline Samples and do not recover n_samples."
                 ),
-                "arm3_graph": (
+                "model3_graph": (
                     "One bit, and it is worth stating precisely. Mean aggregation makes "
                     "degree invisible by design (encoder doc §2.3), so neither n_samples nor "
                     "n_diagnoses reaches the encoder as a number. But #11 split HAS_DIAGNOSIS "
                     "on isPrimaryDiagnosis, and an empty relation contributes exactly 0 while "
                     "a non-empty one does not -- so 'this Subject has at least one secondary "
                     "Diagnosis' (37.3% of Subjects) is structurally visible. That is a 1-bit "
-                    "read on n_diagnoses > 1. Intervention is absent from every arm entirely "
+                    "read on n_diagnoses > 1. Intervention is absent from every model entirely "
                     "(#4 §4), so the protective immortal-time term reaches nothing."
                 ),
             },
@@ -394,11 +394,11 @@ def assess_degree_probe(inputs: GateInputs, config: GateConfig) -> Verdict:
 
 
 def assess_label_shuffle(inputs: GateInputs, config: GateConfig) -> Verdict:
-    """PASS when every arm sits at chance under the gating permutation scheme."""
+    """PASS when every model sits at chance under the gating permutation scheme."""
     runs = inputs.label_shuffle["runs"]
     assert isinstance(runs, list)
     deviations = {
-        str(run["arm"]): abs(float(run[METRIC]["mean"]) - 0.5)
+        str(run["model"]): abs(float(run[METRIC]["mean"]) - 0.5)
         for run in runs
         if run["scheme"] == config.shuffle_gate_scheme
     }
@@ -407,8 +407,8 @@ def assess_label_shuffle(inputs: GateInputs, config: GateConfig) -> Verdict:
             f"no shuffle run under the gating scheme {config.shuffle_gate_scheme!r}; "
             "the gate has nothing to judge"
         )
-    worst_arm = max(deviations, key=lambda arm: deviations[arm])
-    worst = deviations[worst_arm]
+    worst_model = max(deviations, key=lambda model: deviations[model])
+    worst = deviations[worst_model]
     passed = worst < config.shuffle_tolerance
     return Verdict(
         diagnostic="label_shuffle",
@@ -416,25 +416,25 @@ def assess_label_shuffle(inputs: GateInputs, config: GateConfig) -> Verdict:
         statistic=worst,
         threshold=config.shuffle_tolerance,
         rule=(
-            f"PASS if every arm's mean {METRIC} is within {config.shuffle_tolerance} of 0.5 "
+            f"PASS if every model's mean {METRIC} is within {config.shuffle_tolerance} of 0.5 "
             f"under the {config.shuffle_gate_scheme!r} permutation"
         ),
         reading=(
-            "No arm can predict a permuted label, so nothing Survival-derived reached the "
+            "No model can predict a permuted label, so nothing Survival-derived reached the "
             "feature side."
             if passed
             else (
-                f"{worst_arm} predicts a permuted label, which it cannot do without leakage. "
+                f"{worst_model} predicts a permuted label, which it cannot do without leakage. "
                 "Encoder doc §0 names the likely cause: a :Survival property that survived into "
-                "the feature export. Check extract.guards.SURVIVAL_DERIVED against the arm's "
+                "the feature export. Check extract.guards.SURVIVAL_DERIVED against the model's "
                 "design matrix before reading any number from this pipeline."
             )
         ),
         detail={
-            "deviation_from_chance_by_arm": deviations,
-            "worst_arm": worst_arm,
+            "deviation_from_chance_by_model": deviations,
+            "worst_model": worst_model,
             "per_scheme": {
-                f"{run['arm']}/{run['scheme']}": {
+                f"{run['model']}/{run['scheme']}": {
                     METRIC: float(run[METRIC]["mean"]),
                     "pooled_harrell_c": float(run["pooled_harrell_c"]["mean"]),
                 }
@@ -443,7 +443,7 @@ def assess_label_shuffle(inputs: GateInputs, config: GateConfig) -> Verdict:
             "reading_the_within_study_scheme": (
                 "Under 'within_study' a pooled C above 0.5 is expected and is not a leak: "
                 "labels stay inside their Study, so Study-level survival differences survive "
-                "and arms 2/3 can still read them off Condition (R²_study = 0.948). The "
+                "and models 2/3 can still read them off Condition (R²_study = 0.948). The "
                 "within-Study metric falling to chance under the same permutation is #4 §6's "
                 "immunity argument demonstrated rather than asserted."
             ),

@@ -2,9 +2,9 @@
 
 Per encoder doc §4's ablation ladder, rung 0 is "Flattened/tabular + plain
 neural network — no structure at all." The network plays the same role a GNN
-encoder plays for arm 3: it maps a Subject's representation to `z in R^d`,
+encoder plays for model 3: it maps a Subject's representation to `z in R^d`,
 trained end-to-end on the stratified Cox objective. Stage two freezes
-`embed()` and passes `z` through the one shared decoder every arm is scored
+`embed()` and passes `z` through the one shared decoder every model is scored
 through (`gl_lifesphere.survival.decoder`); the training-time risk head is
 not used by the primary result, but is kept (not discarded) because #3 §3
 pre-declares scoring it directly as the "end-to-end" diagnostic — a by-product

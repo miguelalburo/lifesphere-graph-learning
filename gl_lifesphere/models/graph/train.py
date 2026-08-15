@@ -1,16 +1,16 @@
-"""Two-stage training for arm 3, one outer fold at a time (#12, #3 §3).
+"""Two-stage training for model 3, one outer fold at a time (#12, #3 §3).
 
 Stage one trains `SubjectSubgraphEncoder` end-to-end on the stratified Efron Cox
 loss, full-batch, with early stopping on the nested validation slice. Stage two
-is `survival.two_stage` — the same code arm 2 calls, not merely the same
-protocol — so the only thing that differs between the two arms is the
+is `survival.two_stage` — the same code model 2 calls, not merely the same
+protocol — so the only thing that differs between the two models is the
 representation stage one learned from.
 
 **Full-batch, and that is a correctness requirement rather than a convenience.**
 The Cox partial likelihood is not a sum over independent rows: each event's term
 is normalised over the risk set of everyone still under observation. Mini-batching
 would evaluate it against a random subset of that risk set, which is a different
-objective, and arm 2 trains on the whole training fold at once. The subgraphs
+objective, and model 2 trains on the whole training fold at once. The subgraphs
 are small enough to make this free — a training fold is ~4,100 graphs of ~12
 nodes, so one `Batch` is ~50k nodes at `d = 32`.
 
@@ -18,7 +18,7 @@ nodes, so one `Batch` is ~50k nodes at `d = 32`.
 builds one `HeteroData` per Subject under this fold's fitted contract; every
 epoch then reuses the same three collated batches.
 
-**Honest prior (#12, `message-passing.md` §10).** This arm is expected to be
+**Honest prior (#12, `message-passing.md` §10).** This model is expected to be
 thin on the clinical-only schema: the Intervention layer that supplied most of
 the fan-out was removed by #4 §4 as an immortal-time leak, and what remains is
 one set (Samples, spanning ~2 distinct types per Subject) plus a near-1:1
@@ -48,7 +48,7 @@ from .. import training
 from ..training import EncoderFit
 from .network import SubjectSubgraphEncoder
 
-ARM = "arm3_graph"
+MODEL = "model3_graph"
 CONSTRUCTION = "subject_subgraph"
 
 # Travels with every recorded fold, not only the run summary. The fold files are
@@ -67,7 +67,7 @@ CONDITION_FLAG = (
 
 
 @dataclass(frozen=True)
-class GraphArmConfig:
+class GraphModelConfig:
     """Every hyperparameter this module needs; everything else is fixed by #3 and #4.
 
     `num_layers` is exposed but should stay at 2: it is the diameter of the
@@ -80,11 +80,11 @@ class GraphArmConfig:
     the root mean-aggregates the primary Diagnosis together with 0–4 secondaries
     that carry the training-fold within-Study median stage, shifting the
     Diagnosis-set mean 0.35 sd off the primary's own stage for the 37.3% of
-    Subjects with several. If arm 3 underperforms, #11 names this the second
+    Subjects with several. If model 3 underperforms, #11 names this the second
     thing to check after the reverse edges, and checking it means running it.
     """
 
-    arm: str = ARM
+    model: str = MODEL
     construction: str = CONSTRUCTION
     endpoint: str = training.LOCKED_ENDPOINT
     split: str = field(default_factory=training.locked_split_name)
@@ -98,7 +98,7 @@ class GraphArmConfig:
     seed: int = 0
     split_primary_relation: bool = True
     add_reverse_edges: bool = True
-    # #13's structure ablation. A field on this arm's own config rather than a
+    # #13's structure ablation. A field on this model's own config rather than a
     # switch in `diagnostics/` because that is what makes the control's claim
     # true: "an identical model with all `edge_index` tensors emptied" (encoder
     # doc §7) has to be the identical code path, one boolean apart, or the
@@ -109,7 +109,7 @@ class GraphArmConfig:
     penalty_grid: tuple[float, ...] = decoder.PENALTY_GRID
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> "GraphArmConfig":
+    def from_dict(cls, payload: dict[str, object]) -> "GraphModelConfig":
         """Ignores keys the dataclass does not declare (e.g. a `_comment`), so a
         documented config file need not be stripped before loading."""
         kwargs = training.config_from_dict(cls, payload)
@@ -153,7 +153,7 @@ def collate(
 
 
 def _new_encoder(
-    reference: HeteroData, blocks: FeatureBlocks, *, config: GraphArmConfig
+    reference: HeteroData, blocks: FeatureBlocks, *, config: GraphModelConfig
 ) -> SubjectSubgraphEncoder:
     """A freshly initialised encoder sized to this fold's construction.
 
@@ -178,7 +178,7 @@ def train_encoder(
     val: SplitBatch,
     blocks: FeatureBlocks,
     *,
-    config: GraphArmConfig,
+    config: GraphModelConfig,
 ) -> EncoderFit[SubjectSubgraphEncoder]:
     """Full-batch Adam on the stratified Efron Cox loss, early-stopped on val loss."""
     return training.train_with_early_stopping(
@@ -207,7 +207,7 @@ def _embed(model: SubjectSubgraphEncoder, split: SplitBatch) -> pd.DataFrame:
 @dataclass(frozen=True)
 class FoldResult:
     fold: int
-    config: GraphArmConfig
+    config: GraphModelConfig
     contract: FeatureContract = field(repr=False)
     encoder_fit: EncoderFit[SubjectSubgraphEncoder] = field(repr=False)
     construction: dict[str, object] = field(repr=False)
@@ -239,7 +239,7 @@ class FoldResult:
             "construction": self.construction,
             "metrics": self.primary.fold_metrics.to_dict(),
             "diagnostics": training.diagnostics_to_dict(
-                arm_label="arm 3",
+                model_label="model 3",
                 random_init_penalizer=self.random_init.penalty_selection.chosen_penalizer,
                 random_init=self.random_init.fold_metrics,
                 end_to_end=self.end_to_end,
@@ -287,7 +287,7 @@ def run_fold(
     raw: pd.DataFrame,
     targets: SurvivalTarget,
     split: FoldSplit,
-    config: GraphArmConfig,
+    config: GraphModelConfig,
     cache_dir: Path | None = None,
     use_cache: bool = True,
     expect_discrimination: bool = True,
@@ -295,7 +295,7 @@ def run_fold(
     """One outer fold, end to end: fit contract -> build -> train -> select lambda -> score.
 
     The feature contract is fitted on the *inner* training set (`split.train`,
-    excluding `split.val`), identically to arm 2 — the nested validation slice
+    excluding `split.val`), identically to model 2 — the nested validation slice
     must see only train-fitted statistics, or its role as an early-stopping and
     lambda-selection check on held-out data is compromised. The construction is
     then built under that contract, which is why the cache is keyed on it.
@@ -336,7 +336,7 @@ def run_fold(
         z_test=_embed(encoder_fit.model, test),
         test_target=test.target,
         penalty_grid=config.penalty_grid,
-        where=f"arm3 fold {outer_fold} (train+val)",
+        where=f"model3 fold {outer_fold} (train+val)",
         expect_discrimination=expect_discrimination,
     )
 
@@ -349,7 +349,7 @@ def run_fold(
         z_test=_embed(random_model, test),
         test_target=test.target,
         penalty_grid=config.penalty_grid,
-        where=f"arm3 fold {outer_fold} (random-init control)",
+        where=f"model3 fold {outer_fold} (random-init control)",
         expect_discrimination=expect_discrimination,
     )
 
@@ -359,7 +359,7 @@ def run_fold(
         trainval_target=trainval.target,
         test_input=test.batch,
         test_target=test.target,
-        where=f"arm3 fold {outer_fold} (end-to-end diagnostic)",
+        where=f"model3 fold {outer_fold} (end-to-end diagnostic)",
         expect_discrimination=expect_discrimination,
     )
 
@@ -378,7 +378,7 @@ def run_fold(
 
 
 def iter_folds(
-    config: GraphArmConfig,
+    config: GraphModelConfig,
     *,
     records: cache.SubjectRecords | None = None,
     raw: pd.DataFrame | None = None,
@@ -393,7 +393,7 @@ def iter_folds(
     fifth is avoidable, and the caller is the only one that knows where they go.
     """
     training.check_run_identity(
-        arm=config.arm, expected_arm=ARM, endpoint=config.endpoint, split=config.split
+        model=config.model, expected_model=MODEL, endpoint=config.endpoint, split=config.split
     )
     subject_records = records if records is not None else cache.load_subject_records()
     raw_frame = raw if raw is not None else assemble_raw_frame()

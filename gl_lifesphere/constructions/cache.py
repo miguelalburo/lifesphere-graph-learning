@@ -132,8 +132,8 @@ def build_subject_records(
     roster and the other tables are joined *to* it, never the other way round —
     one cohort Subject has no Diagnosis at all (#4 §8), and driving the
     iteration from `diagnoses` would silently drop them and desynchronise the
-    Subject set every arm shares (`features.raw`'s docstring makes the same
-    point for the flattened arm).
+    Subject set every model shares (`features.raw`'s docstring makes the same
+    point for the flattened model).
     """
     roster = [str(subject) for subject in sorted(members["subjectId"])]
     in_cohort = set(roster)

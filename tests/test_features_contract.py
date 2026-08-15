@@ -1,6 +1,6 @@
-"""Tests for the shared feature contract (#4), depended on directly by arm 1 (#9).
+"""Tests for the shared feature contract (#4), depended on directly by model 1 (#9).
 
-Scoped to what arm 1 relies on rather than re-deriving all of #4's encoding
+Scoped to what model 1 relies on rather than re-deriving all of #4's encoding
 decisions: that `fit_feature_contract` only ever looks at the training
 Subjects it is handed (so a val/test row cannot influence a vocabulary or an
 imputation value), that `transform` never leaks `studyId` or a Survival
@@ -149,10 +149,10 @@ class TestConditionKeyedOnIdentity:
 
 
 class TestBaselineSubset:
-    """The columns arm 1 (#9) is allowed to use: everything except Condition
+    """The columns model 1 (#9) is allowed to use: everything except Condition
     (`conditionId`, flagged in #4 §6 as close to a relabelling of Study — and
     measured at R²_study = 0.948 once keyed on identity) and Sample-type
-    proportions (#4 §4: arm 1 does not carry that ascertainment channel)."""
+    proportions (#4 §4: model 1 does not carry that ascertainment channel)."""
 
     def test_excludes_condition_and_sample_proportion_columns(self, raw_frame: pd.DataFrame) -> None:
         from gl_lifesphere.models.baseline.train import baseline_columns

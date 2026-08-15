@@ -1,10 +1,10 @@
-"""The shared decoder every arm is refitted and scored through (#3 §3).
+"""The shared decoder every model is refitted and scored through (#3 §3).
 
 `lifelines.CoxPHFitter(penalizer=lambda, l1_ratio=0, strata=['study'])` is the
 single fit — not `sksurv.CoxnetSurvivalAnalysis`, which has no `strata`
 parameter and would silently reverse the stratification decision. Two-stage
-wiring means every arm hands this module a representation matrix (raw clinical
-covariates for arm 1, a frozen encoder's `z` for arms 2 and 3) and gets back
+wiring means every model hands this module a representation matrix (raw clinical
+covariates for model 1, a frozen encoder's `z` for models 2 and 3) and gets back
 risk scores through the identical call.
 """
 
@@ -22,7 +22,7 @@ STUDY_COLUMN = "study"
 DURATION_COLUMN = "time"
 EVENT_COLUMN = "event"
 
-# 12-point log grid, 1e-4 .. 1e1 (#3 §3), identical for every arm and fold.
+# 12-point log grid, 1e-4 .. 1e1 (#3 §3), identical for every model and fold.
 PENALTY_GRID: tuple[float, ...] = tuple(np.logspace(-4, 1, 12))
 
 

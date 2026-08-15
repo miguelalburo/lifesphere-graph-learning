@@ -1,4 +1,4 @@
-"""Train arm 1 across all 5 folds, write metrics, and run the literature sanity check.
+"""Train model 1 across all 5 folds, write metrics, and run the literature sanity check.
 
     python -m gl_lifesphere.models.baseline [--config PATH] [--out DIR]
 
@@ -17,10 +17,10 @@ import numpy as np
 
 from ...extract.connection import REPO_ROOT
 from .sanity_check import pooled_out_of_sample_predictions, run_sanity_check
-from .train import ARM, BaselineArmConfig, FoldResult, run_all_folds
+from .train import MODEL, BaselineModelConfig, FoldResult, run_all_folds
 
-DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "arm1_baseline.json"
-DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "arm1_baseline"
+DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "model1_baseline.json"
+DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "model1_baseline"
 
 _SUMMARY_KEYS = (
     "pooled_harrell_c",
@@ -46,7 +46,7 @@ def _summarise(results: list[FoldResult]) -> dict[str, object]:
 
 def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> list[FoldResult]:
     payload = json.loads(config_path.read_text())
-    config = BaselineArmConfig.from_dict(payload)
+    config = BaselineModelConfig.from_dict(payload)
     results = run_all_folds(config)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -60,7 +60,7 @@ def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> lis
     )
 
     summary = {
-        "arm": ARM,
+        "model": MODEL,
         "config": payload,
         "folds": _summarise(results),
         "sanity_check": [s.to_dict() for s in sanity],
@@ -86,7 +86,7 @@ def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> lis
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train arm 1 (clinical baseline) across all 5 folds."
+        description="Train model 1 (clinical baseline) across all 5 folds."
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)

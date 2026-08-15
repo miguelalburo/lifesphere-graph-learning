@@ -86,7 +86,7 @@ def write_table(
         "columns": {column: str(dtype) for column, dtype in frame.dtypes.items()},
         # Recorded separately because the schema is written with sorted keys, and
         # a design matrix whose columns silently reorder between writes is a
-        # cross-arm comparability bug rather than a cosmetic one.
+        # cross-model comparability bug rather than a cosmetic one.
         "order": [str(column) for column in frame.columns],
         "n_rows": int(len(frame)),
         "meta": meta or {},

@@ -1,8 +1,8 @@
-"""The three comparison arms, one subpackage each.
+"""The three comparison models, one subpackage each.
 
 Every model here has the same contract: consume its own representation, emit a
 risk score per Subject. The survival loss and metric live in
-`gl_lifesphere.survival` and are identical across arms.
+`gl_lifesphere.survival` and are identical across models.
 
 - `baseline`  Clinical staging/pathology-only benchmark (classical Cox, RSF).
 - `tabular`   Flattened one-row-per-Subject representation, no edges — the

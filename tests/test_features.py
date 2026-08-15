@@ -31,7 +31,7 @@ import fixtures
 
 @pytest.fixture
 def raw_frame() -> pd.DataFrame:
-    """The fixture cohort, run through the real casts, joined the way an arm would."""
+    """The fixture cohort, run through the real casts, joined the way a model would."""
     subjects = cast.cast_subjects(pd.DataFrame(fixtures.raw_subjects()))
     diagnoses = cast.cast_diagnoses(pd.DataFrame(fixtures.raw_diagnoses()))
     diagnosis_primary = cast.reduce_diagnoses(diagnoses)

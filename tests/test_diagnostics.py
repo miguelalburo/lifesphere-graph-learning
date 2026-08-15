@@ -5,13 +5,13 @@ checks that it does — so what needs testing here is not "does it produce a
 number" but "would it still fail if the thing it guards against were present".
 Three properties carry most of that weight:
 
-- the structure ablation differs from the full arm in its **edges and nothing
+- the structure ablation differs from the full model in its **edges and nothing
   else**, including its parameter count, or it measures capacity as well as
   structure;
 - the permutation moves `(time, event)` as a pair and leaves every marginal
   intact, or the null it tests is a weaker one a leak could clear;
 - the degree probe's own design matrix **fails the project's leakage guard**,
-  which is what makes it a probe rather than a fourth arm.
+  which is what makes it a probe rather than a fourth model.
 
 Fast and fully synthetic throughout, like `test_graph.py` and `test_tabular.py`.
 Nothing here touches the live instance or the frozen cohort.
@@ -36,7 +36,7 @@ from gl_lifesphere.evaluation.compare import paired_delta
 from gl_lifesphere.evaluation.splits import FoldSplit
 from gl_lifesphere.extract import guards
 from gl_lifesphere.features.contract import fit_feature_contract
-from gl_lifesphere.models.graph import GraphArmConfig, run_fold
+from gl_lifesphere.models.graph import GraphModelConfig, run_fold
 from gl_lifesphere.models.graph.network import SubjectSubgraphEncoder
 from gl_lifesphere.constructions.subject_subgraph import FeatureBlocks
 from gl_lifesphere.survival import metrics
@@ -45,25 +45,25 @@ from gl_lifesphere.survival.two_stage import two_stage_score
 
 N_PER_STUDY = 20
 
-ArmInputs = tuple[cache.SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]
+ModelInputs = tuple[cache.SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]
 
 
 @pytest.fixture
-def synthetic_cohort() -> ArmInputs:
-    return fixtures.synthetic_arm_inputs(N_PER_STUDY)
+def synthetic_cohort() -> ModelInputs:
+    return fixtures.synthetic_model_inputs(N_PER_STUDY)
 
 
 @pytest.fixture
-def built(synthetic_cohort: ArmInputs) -> tuple[cache.SubgraphSet, FeatureBlocks]:
+def built(synthetic_cohort: ModelInputs) -> tuple[cache.SubgraphSet, FeatureBlocks]:
     records, raw, _, split = synthetic_cohort
     contract = fit_feature_contract(raw, split.train)
     blocks = FeatureBlocks.from_contract(contract)
     return cache.build_subgraphs(records, contract), blocks
 
 
-def _config(**overrides: object) -> GraphArmConfig:
+def _config(**overrides: object) -> GraphModelConfig:
     defaults: dict[str, object] = {"d": 8, "max_epochs": 15, "patience": 5, "seed": 0}
-    return GraphArmConfig(**{**defaults, **overrides})  # type: ignore[arg-type]
+    return GraphModelConfig(**{**defaults, **overrides})  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ class TestWithoutEdges:
         self, built: tuple[cache.SubgraphSet, FeatureBlocks]
     ) -> None:
         """The ablated run reads the same cache entry as the real one, so an
-        in-place strip would silently ablate the real arm too."""
+        in-place strip would silently ablate the real model too."""
         subgraphs, _ = built
         before = sum(int(g.num_edges) for g in subgraphs.graphs)
 
@@ -172,8 +172,8 @@ class TestWithoutEdges:
         assert torch.allclose(ablated_before, ablated_after)
 
 
-class TestAblatedArmRun:
-    def test_records_that_the_edges_were_ablated(self, synthetic_cohort: ArmInputs) -> None:
+class TestAblatedModelRun:
+    def test_records_that_the_edges_were_ablated(self, synthetic_cohort: ModelInputs) -> None:
         """The relation set is unchanged by the ablation, so `relation_types`
         cannot show it — the flag and the edge count are the only evidence a
         reader of a fold file has.
@@ -209,7 +209,7 @@ class TestAblatedArmRun:
         json.dumps(result.to_dict(), default=str)
 
     def test_the_unablated_run_still_carries_its_edges(
-        self, synthetic_cohort: ArmInputs
+        self, synthetic_cohort: ModelInputs
     ) -> None:
         records, raw, targets, split = synthetic_cohort
 
@@ -264,7 +264,7 @@ class TestPermuteTargets:
         )
 
     def test_leaves_subject_and_study_where_they_were(self) -> None:
-        """Only the label moves; the keys every arm zips on must not."""
+        """Only the label moves; the keys every model zips on must not."""
         targets = _target()
 
         permuted = shuffle.permute_targets(targets, seed=0)
@@ -314,7 +314,7 @@ class TestPermuteTargets:
 
 
 class TestSelfCheckUnderAShuffledLabel:
-    """#3 §6 has every arm assert its own training-fold risk beats chance,
+    """#3 §6 has every model assert its own training-fold risk beats chance,
     because a sign-inverted score silently returns `1 - C`. A permuted label
     inverts that premise, so the shuffle has to be able to switch the check off
     — and nothing else may."""
@@ -344,7 +344,7 @@ class TestSelfCheckUnderAShuffledLabel:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The one thing this flag can break: if the default ever flipped, the
-        arms would stop self-checking and a sign-inverted risk would go back to
+        models would stop self-checking and a sign-inverted risk would go back to
         silently reporting `1 - C` (#3 §6).
 
         Asserted on the call rather than on a contrived non-discriminating fit,
@@ -377,12 +377,12 @@ class TestSelfCheckUnderAShuffledLabel:
 
 
 class TestLabelShuffleRun:
-    def test_an_arm_retrains_on_a_permuted_label_without_tripping_the_self_check(
-        self, synthetic_cohort: ArmInputs
+    def test_an_model_retrains_on_a_permuted_label_without_tripping_the_self_check(
+        self, synthetic_cohort: ModelInputs
     ) -> None:
-        """The wiring test: the arm's **own** `run_fold` is what runs — a
+        """The wiring test: the model's **own** `run_fold` is what runs — a
         shuffle routed through a reimplementation could not detect a leak that
-        lived in the arm — and a control that scores at chance completes rather
+        lived in the model — and a control that scores at chance completes rather
         than raising."""
         _, raw, targets, _ = synthetic_cohort
         folds = pd.DataFrame(
@@ -396,7 +396,7 @@ class TestLabelShuffleRun:
         )
 
         result = shuffle.run_label_shuffle(
-            arms=("arm1_baseline",),
+            models=("model1_baseline",),
             schemes=(shuffle.GLOBAL,),
             seed=0,
             raw=raw,
@@ -404,12 +404,12 @@ class TestLabelShuffleRun:
             folds=folds,
         )
 
-        run = result.run("arm1_baseline", shuffle.GLOBAL)
+        run = result.run("model1_baseline", shuffle.GLOBAL)
         assert len(run.fold_metrics) == 5
         assert all(0.0 <= c <= 1.0 for c in run.within_study)
         json.dumps(result.to_dict(), default=str)
 
-    def test_each_scheme_gets_one_run_per_arm(self, synthetic_cohort: ArmInputs) -> None:
+    def test_each_scheme_gets_one_run_per_model(self, synthetic_cohort: ModelInputs) -> None:
         _, raw, targets, _ = synthetic_cohort
         folds = pd.DataFrame(
             {
@@ -420,13 +420,13 @@ class TestLabelShuffleRun:
         )
 
         result = shuffle.run_label_shuffle(
-            arms=("arm1_baseline",), schemes=shuffle.SCHEMES, seed=0,
+            models=("model1_baseline",), schemes=shuffle.SCHEMES, seed=0,
             raw=raw, targets=targets, folds=folds,
         )
 
-        assert {(r.arm, r.scheme) for r in result.runs} == {
-            ("arm1_baseline", shuffle.GLOBAL),
-            ("arm1_baseline", shuffle.WITHIN_STUDY),
+        assert {(r.model, r.scheme) for r in result.runs} == {
+            ("model1_baseline", shuffle.GLOBAL),
+            ("model1_baseline", shuffle.WITHIN_STUDY),
         }
 
 
@@ -496,16 +496,16 @@ class TestAccrualCounts:
         )
 
     def test_the_probe_frame_fails_the_projects_own_leakage_guard(self) -> None:
-        """This is what makes it a probe and not a fourth arm. #4 §4 excludes
-        accrual from every arm, `guards.IMMORTAL_TIME_DERIVED` enforces it, and
+        """This is what makes it a probe and not a fourth model. #4 §4 excludes
+        accrual from every model, `guards.IMMORTAL_TIME_DERIVED` enforces it, and
         the control is built from exactly the thing the guard forbids — so the
         guard must still recognise these columns."""
         with pytest.raises(guards.LeakageError, match="immortal-time"):
             guards.check_no_leaking_columns(counts.COUNT_COLUMNS, where="degree probe")
 
-    def test_no_arm_carries_the_probes_counts(self, synthetic_cohort: ArmInputs) -> None:
+    def test_no_model_carries_the_probes_counts(self, synthetic_cohort: ModelInputs) -> None:
         """The other half of the same claim: the exclusion is real, so the
-        shared design matrix every arm reads holds none of these columns."""
+        shared design matrix every model reads holds none of these columns."""
         _, raw, _, split = synthetic_cohort
         contract = fit_feature_contract(raw, split.train)
 
@@ -513,12 +513,12 @@ class TestAccrualCounts:
 
         assert not set(design.columns) & set(counts.COUNT_COLUMNS)
         assert not set(design.columns) & set(counts.PROBE_COLUMNS)
-        guards.check_feature_frame(design, where="arm design matrix")
+        guards.check_feature_frame(design, where="model design matrix")
 
 
 class TestDegreeProbe:
     def test_scores_a_fold_and_records_a_hazard_ratio_per_covariate(
-        self, synthetic_cohort: ArmInputs
+        self, synthetic_cohort: ModelInputs
     ) -> None:
         """The coefficients are the diagnosis, not just the C: a protective HR
         on an accrual count is the immortal-time signature even when the
@@ -543,10 +543,10 @@ class TestDegreeProbe:
         json.dumps(result.to_dict(), default=str)
 
     def test_does_not_raise_when_the_probe_scores_at_chance(
-        self, synthetic_cohort: ArmInputs
+        self, synthetic_cohort: ModelInputs
     ) -> None:
         """A weak probe is a *passing* probe. If this went through
-        `assert_discriminates` like an arm does, the expected outcome would
+        `assert_discriminates` like a model does, the expected outcome would
         crash the gate."""
         _, raw, targets, split = synthetic_cohort
         roster = [str(s) for s in raw["subjectId"]]
@@ -566,8 +566,8 @@ class TestDegreeProbe:
 
         assert result.fold_metrics.within_study.cindex is not None
 
-    def test_the_decomposition_keeps_the_arm3_channel_out_of_the_headline(self) -> None:
-        """`has_secondary_diagnosis` is the one accrual channel arm 3 can see,
+    def test_the_decomposition_keeps_the_model3_channel_out_of_the_headline(self) -> None:
+        """`has_secondary_diagnosis` is the one accrual channel model 3 can see,
         and it is fitted so the gate's claim about that exposure is measured
         rather than asserted. It is not one of §7's three covariates, so it must
         never move the headline number."""
@@ -575,11 +575,11 @@ class TestDegreeProbe:
 
         assert grid[degree_probe.ALL] == counts.PROBE_COLUMNS
         assert counts.SECONDARY_DIAGNOSIS not in grid[degree_probe.ALL]
-        assert grid[f"arm3_visible:{counts.SECONDARY_DIAGNOSIS}"] == (
+        assert grid[f"model3_visible:{counts.SECONDARY_DIAGNOSIS}"] == (
             counts.SECONDARY_DIAGNOSIS,
         )
 
-    def test_the_arm3_channel_is_the_multiple_diagnosis_bit(self) -> None:
+    def test_the_model3_channel_is_the_multiple_diagnosis_bit(self) -> None:
         roster = ["A", "B", "C"]
         frame = pd.DataFrame(
             {"nSamples": [3, 3, 3], "nDiagnoses": [1, 2, 5], "nInterventions": [0, 0, 0]},
@@ -614,7 +614,7 @@ def _fold_metrics(within: float, pooled: float = 0.5) -> metrics.FoldMetrics:
 
 def _ablation(full: list[float], ablated: list[float]) -> AblationResult:
     return AblationResult(
-        config=GraphArmConfig(ablate_edges=True),
+        config=GraphModelConfig(ablate_edges=True),
         full_per_fold=tuple(full),
         ablated_per_fold=tuple(ablated),
         delta=paired_delta(full, ablated),
@@ -624,13 +624,13 @@ def _ablation(full: list[float], ablated: list[float]) -> AblationResult:
 def _shuffle_result(means: dict[str, float], scheme: str = shuffle.GLOBAL) -> shuffle.ShuffleResult:
     return shuffle.ShuffleResult(
         runs=tuple(
-            shuffle.ArmShuffle(
-                arm=arm,
+            shuffle.ModelShuffle(
+                model=model,
                 scheme=scheme,
                 seed=0,
                 fold_metrics=tuple(_fold_metrics(mean) for _ in range(5)),
             )
-            for arm, mean in means.items()
+            for model, mean in means.items()
         )
     )
 
@@ -661,8 +661,8 @@ def _inputs(
     probe: float = 0.52,
     shuffled: dict[str, float] | None = None,
     scheme: str = shuffle.GLOBAL,
-    extra_runs: tuple[shuffle.ArmShuffle, ...] = (),
-    arm_means: dict[str, float] | None = None,
+    extra_runs: tuple[shuffle.ModelShuffle, ...] = (),
+    model_means: dict[str, float] | None = None,
 ) -> gate.GateInputs:
     """A `GateInputs` built by serialising the real result objects.
 
@@ -672,12 +672,12 @@ def _inputs(
     *reads*. A hand-built dict would keep passing after a key was renamed on
     one side only.
     """
-    runs = _shuffle_result(shuffled or {"arm3_graph": 0.50}, scheme=scheme).runs + extra_runs
+    runs = _shuffle_result(shuffled or {"model3_graph": 0.50}, scheme=scheme).runs + extra_runs
     return gate.GateInputs(
         ablation=_ablation(full or [0.70] * 5, ablated or [0.60] * 5).to_dict(),
         degree_probe=_probe(probe).to_dict(),
         label_shuffle=shuffle.ShuffleResult(runs=runs).to_dict(),
-        arm_means=arm_means or {"arm1_baseline": 0.6556, "arm3_graph": 0.6767},
+        model_means=model_means or {"model1_baseline": 0.6556, "model3_graph": 0.6767},
     )
 
 
@@ -700,7 +700,7 @@ class TestVerdicts:
 
         assert verdict.verdict == gate.PASS
         assert "does not establish that structure beats flattening" in verdict.reading
-        assert "arm 2" in verdict.reading
+        assert "model 2" in verdict.reading
 
     def test_a_flat_ablation_does_not_blame_the_reverse_edges(self) -> None:
         """§7 names the §2.1 reverse-edge bug as the first suspect, but
@@ -735,29 +735,29 @@ class TestVerdicts:
         assert verdict.detail["protective_covariates_p_lt_0.05"] == ["log1p_nInterventions"]
         assert verdict.detail["harmful_covariates_p_lt_0.05"] == ["log1p_nDiagnoses"]
 
-    def test_degree_probe_records_which_arms_clear_its_floor(self) -> None:
+    def test_degree_probe_records_which_models_clear_its_floor(self) -> None:
         """§7: "this probe's C-index is the floor a structural result has to
         clear to be interesting"."""
         verdict = gate.assess_degree_probe(
-            _inputs(probe=0.66, arm_means={"arm1_baseline": 0.6556, "arm3_graph": 0.6767}),
+            _inputs(probe=0.66, model_means={"model1_baseline": 0.6556, "model3_graph": 0.6767}),
             gate.GateConfig(degree_probe_ceiling=0.70),
         )
 
-        assert verdict.detail["arms_clearing_the_floor"] == ["arm3_graph"]
+        assert verdict.detail["models_clearing_the_floor"] == ["model3_graph"]
 
-    def test_shuffle_passes_only_when_every_arm_sits_at_chance(self) -> None:
+    def test_shuffle_passes_only_when_every_model_sits_at_chance(self) -> None:
         config = gate.GateConfig(shuffle_tolerance=0.05)
 
         at_chance = gate.assess_label_shuffle(
-            _inputs(shuffled={"arm1_baseline": 0.501, "arm3_graph": 0.497}), config
+            _inputs(shuffled={"model1_baseline": 0.501, "model3_graph": 0.497}), config
         )
         leaking = gate.assess_label_shuffle(
-            _inputs(shuffled={"arm1_baseline": 0.502, "arm3_graph": 0.61}), config
+            _inputs(shuffled={"model1_baseline": 0.502, "model3_graph": 0.61}), config
         )
 
         assert at_chance.verdict == gate.PASS
         assert leaking.verdict == gate.FAIL
-        assert leaking.detail["worst_arm"] == "arm3_graph"
+        assert leaking.detail["worst_model"] == "model3_graph"
         assert "SURVIVAL_DERIVED" in leaking.reading
 
     def test_shuffle_is_judged_only_on_the_gating_scheme(self) -> None:
@@ -765,9 +765,9 @@ class TestVerdicts:
         recorded rather than gated on — judging it would fail the gate on #4
         §6's immunity argument working correctly."""
         inputs = _inputs(
-            shuffled={"arm3_graph": 0.50},
+            shuffled={"model3_graph": 0.50},
             extra_runs=_shuffle_result(
-                {"arm3_graph": 0.62}, scheme=shuffle.WITHIN_STUDY
+                {"model3_graph": 0.62}, scheme=shuffle.WITHIN_STUDY
             ).runs,
         )
 
@@ -778,7 +778,7 @@ class TestVerdicts:
         assert verdict.verdict == gate.PASS
 
     def test_shuffle_refuses_to_judge_when_the_gating_scheme_was_not_run(self) -> None:
-        inputs = _inputs(shuffled={"arm3_graph": 0.50}, scheme=shuffle.WITHIN_STUDY)
+        inputs = _inputs(shuffled={"model3_graph": 0.50}, scheme=shuffle.WITHIN_STUDY)
 
         with pytest.raises(ValueError, match="nothing to judge"):
             gate.assess_label_shuffle(
@@ -788,10 +788,10 @@ class TestVerdicts:
     def test_the_gate_is_the_conjunction_of_its_three_verdicts(self) -> None:
         config = gate.GateConfig()
 
-        report = gate.assess(_inputs(shuffled={"arm3_graph": 0.50}), config)
+        report = gate.assess(_inputs(shuffled={"model3_graph": 0.50}), config)
         assert report.overall == gate.PASS
 
-        failing = gate.assess(_inputs(shuffled={"arm3_graph": 0.62}), config)
+        failing = gate.assess(_inputs(shuffled={"model3_graph": 0.62}), config)
         assert failing.overall == gate.FAIL
         json.dumps(failing.to_dict(), default=str)
 
@@ -810,7 +810,7 @@ class TestGateInputsRoundTrip:
             (tmp_path / f"{name}.json").write_text(json.dumps(payload, default=str))
 
         report = gate.assess(
-            gate.GateInputs.from_files(tmp_path, arm_means=source.arm_means),
+            gate.GateInputs.from_files(tmp_path, model_means=source.model_means),
             gate.GateConfig(),
         )
 
@@ -821,7 +821,7 @@ class TestGateInputsRoundTrip:
         self, tmp_path: Path
     ) -> None:
         with pytest.raises(FileNotFoundError, match="--only ablation"):
-            gate.GateInputs.from_files(tmp_path, arm_means={})
+            gate.GateInputs.from_files(tmp_path, model_means={})
 
     def test_the_commands_it_suggests_are_ones_the_cli_accepts(self) -> None:
         """The `--only` value is spelled out per file rather than derived from
@@ -859,7 +859,7 @@ class TestGateConfig:
     def test_a_config_declaring_something_else_fails_loudly(
         self, field: str, value: str, match: str
     ) -> None:
-        """The same rule every arm honours (#7, `experiments/README.md`): the
+        """The same rule every model honours (#7, `experiments/README.md`): the
         loaders read the frozen cohort and the persisted folds regardless of
         what a config says, so a gate declaring PFI would pass or fail OS
         results under a PFI label."""
@@ -868,40 +868,40 @@ class TestGateConfig:
         with pytest.raises(ValueError, match=match):
             config.check()
 
-    def test_the_arms_are_built_from_their_own_config_files(self) -> None:
-        """The shuffle retrains the arms, so it has to build them exactly as
-        their own runs did. Reading `experiments/configs/arm*.json` directly is
+    def test_the_models_are_built_from_their_own_config_files(self) -> None:
+        """The shuffle retrains the models, so it has to build them exactly as
+        their own runs did. Reading `experiments/configs/model*.json` directly is
         what makes that true by construction — a copy inside the gate's config
         would be a second place to change them, and nothing checks it."""
         from gl_lifesphere.diagnostics.__main__ import DEFAULT_CONFIG
 
         directory = DEFAULT_CONFIG.parent
         payload = json.loads(DEFAULT_CONFIG.read_text())
-        baseline, tabular, graph = gate.GateConfig.from_dict(payload).arm_configs(directory)
+        baseline, tabular, graph = gate.GateConfig.from_dict(payload).model_configs(directory)
 
-        arm1 = json.loads((directory / "arm1_baseline.json").read_text())
-        arm2 = json.loads((directory / "arm2_tabular.json").read_text())
-        arm3 = json.loads((directory / "arm3_graph.json").read_text())
+        model1 = json.loads((directory / "model1_baseline.json").read_text())
+        model2 = json.loads((directory / "model2_tabular.json").read_text())
+        model3 = json.loads((directory / "model3_graph.json").read_text())
 
-        assert baseline.seed == arm1["seed"]
-        assert tabular.d == arm2["d"]
-        assert tabular.hidden_dims == tuple(arm2["hidden_dims"])
-        assert graph.d == arm3["d"]
-        assert graph.num_layers == arm3["num_layers"]
-        assert graph.split_primary_relation == arm3["split_primary_relation"]
+        assert baseline.seed == model1["seed"]
+        assert tabular.d == model2["d"]
+        assert tabular.hidden_dims == tuple(model2["hidden_dims"])
+        assert graph.d == model3["d"]
+        assert graph.num_layers == model3["num_layers"]
+        assert graph.split_primary_relation == model3["split_primary_relation"]
         # `run_structure_ablation` is what turns the flag on; the shuffle needs
-        # the real arm, so the arm's own config must not pre-ablate.
+        # the real model, so the model's own config must not pre-ablate.
         assert graph.ablate_edges is False
 
-    def test_the_gate_config_holds_no_second_copy_of_the_arms(self) -> None:
-        """The drift this design exists to prevent: a duplicated `arms` block
+    def test_the_gate_config_holds_no_second_copy_of_the_models(self) -> None:
+        """The drift this design exists to prevent: a duplicated `models` block
         would be a second source of truth for hyperparameters the shuffle
-        rebuilds each arm from."""
+        rebuilds each model from."""
         from gl_lifesphere.diagnostics.__main__ import DEFAULT_CONFIG
 
         payload = json.loads(DEFAULT_CONFIG.read_text())
 
-        assert "arms" not in payload
+        assert "models" not in payload
 
 
 class TestPairedDelta:

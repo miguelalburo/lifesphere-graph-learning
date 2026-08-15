@@ -9,7 +9,7 @@ only"; the same rule is applied here to every fitted statistic, not only the
 continuous ones, since a category vocabulary or a rare-level threshold learned
 from held-out Subjects is the same class of leak).
 
-This is the one place both the tabular arm (#10) and the graph arm (#12) are
+This is the one place both the tabular model (#10) and the graph model (#12) are
 required to call through (#10's own text: "Every feature must come from
 `gl_lifesphere/features/` ... any divergence is a bug in the comparison").
 
@@ -25,7 +25,7 @@ drop the node, on the understanding that this is the *more* severe cancer-type
 channel of the two — **R²_study = 0.948** against 0.793 for `conditionSubtype`,
 the highest measured anywhere in this project, with 108 of 121 cohort
 `conditionId` values sitting in exactly one Study. That flag is carried in
-arm 3's config and results rather than left here.
+model 3's config and results rather than left here.
 
 The within-Study headline metric is immune to it by construction (#4 §6: a
 feature near-constant within a stratum cannot reorder within-Study pairs, and

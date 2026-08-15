@@ -26,14 +26,14 @@ node stays — schema fidelity is the point of this construction — but its onl
 feature is its identity rather than the corrupt `conditionName`
 (`check_condition_vocabulary`). It is the most severe cancer-type channel in
 the project at R²_study = 0.948, which the within-Study headline metric is
-immune to by construction and the pooled secondaries are not; arm 3's config
+immune to by construction and the pooled secondaries are not; model 3's config
 carries the flag.
 
 **Features come from the shared contract, never from a second encoding.** The
-same fitted `FeatureContract` the flattened arm calls (#4 §2: "there is no
-encoding difference between the arms to negotiate") is sliced into per-node-type
-blocks here. What differs between the arms is *which rows* the encoders see: the
-flattened arm reduces to one primary Diagnosis with per-field fallback (#4 §1),
+same fitted `FeatureContract` the flattened model calls (#4 §2: "there is no
+encoding difference between the models to negotiate") is sliced into per-node-type
+blocks here. What differs between the models is *which rows* the encoders see: the
+flattened model reduces to one primary Diagnosis with per-field fallback (#4 §1),
 whereas every Diagnosis becomes its own node here. That is a structural
 difference, which is the only kind allowed.
 """
@@ -111,8 +111,8 @@ class SubjectRecord:
 class FeatureBlocks:
     """The contract's columns, partitioned across the node types that carry them.
 
-    The partition is the concrete meaning of "the arms share a feature
-    contract": every column the flattened arm puts in one wide row appears
+    The partition is the concrete meaning of "the models share a feature
+    contract": every column the flattened model puts in one wide row appears
     exactly once somewhere in the graph, and no column appears twice or goes
     missing. `check_partitions_contract` asserts precisely that.
     """
@@ -192,7 +192,7 @@ def _subject_features(record: SubjectRecord, contract: FeatureContract) -> torch
 def _diagnosis_features(record: SubjectRecord, contract: FeatureContract) -> torch.Tensor:
     """Per-Diagnosis, with the contract's encoders applied to each node's own row.
 
-    The flattened arm's per-field fallback (#4 §1) is deliberately *not* applied
+    The flattened model's per-field fallback (#4 §1) is deliberately *not* applied
     here: a secondary Diagnosis that records no stage is a node whose stage is
     genuinely absent, and borrowing the primary's value would invent a fact the
     graph does not hold. What each node does inherit is the contract's
@@ -263,10 +263,10 @@ def _sample_features(nodes: pd.DataFrame, contract: FeatureContract) -> torch.Te
     """One standardised `sampleType` indicator per Sample node.
 
     Standardised with the *proportion* encoder's own mean and std, which is what
-    makes the arms provably equal on this block: standardisation is affine and
+    makes the models provably equal on this block: standardisation is affine and
     the mean commutes with it, so the mean over a Subject's Sample nodes of
     `(onehot - mu) / sigma` is exactly `(p - mu) / sigma`, the row the flattened
-    arm gets. Mean-aggregating this node type reproduces the contract's
+    model gets. Mean-aggregating this node type reproduces the contract's
     proportion vector to floating-point tolerance — `check_subgraph` asserts it
     rather than leaving it as an argument on paper.
     """
@@ -326,7 +326,7 @@ def build_subgraph(
     Subjects (max 2.47 sd; 616 Subjects beyond 0.5 sd, 121 beyond 1.0). Stage is
     the strongest prognostic feature in the study at HR 1.68 per level (#4 §3),
     so that is a quiet, one-directional shrink toward the Study median on the
-    one feature the graph arm can least afford to blunt. Two relations let the
+    one feature the graph model can least afford to blunt. Two relations let the
     encoder weight the primary separately and recover it.
 
     `add_reverse_edges=False` exists to be run, once, and seen to fail: it is
@@ -534,7 +534,7 @@ def check_subgraph(
         f"present: {sorted(banned)}" if banned else f"types: {sorted(types_present) or 'none'}",
     )
 
-    # --- the arms agree on the Sample block --------------------------------
+    # --- the models agree on the Sample block --------------------------------
     add(*_check_sample_mean_matches_contract(data, record, contract))
 
     # --- arity -------------------------------------------------------------
@@ -554,12 +554,12 @@ def check_subgraph(
 def _check_sample_mean_matches_contract(
     data: HeteroData, record: SubjectRecord, contract: FeatureContract
 ) -> tuple[str, bool, str]:
-    """Mean-aggregating the Sample nodes must reproduce the flattened arm's row.
+    """Mean-aggregating the Sample nodes must reproduce the flattened model's row.
 
-    If this ever fails, the two arms are encoding the same biospecimens
+    If this ever fails, the two models are encoding the same biospecimens
     differently and any difference in their C-index is partly an encoding
     artifact rather than a structural result — which is the one thing the whole
-    three-arm design exists to rule out.
+    three-model design exists to rule out.
     """
     name = "mean over Sample nodes == the contract's proportion row"
     x = data[SAMPLE].x
@@ -568,7 +568,7 @@ def _check_sample_mean_matches_contract(
         return (
             name,
             x.numel() == 0,
-            "no baseline Sample: the graph aggregates an empty set to 0, the flattened arm "
+            "no baseline Sample: the graph aggregates an empty set to 0, the flattened model "
             "gets the training-fold mean standardised — they differ, by design and by a "
             "measurable amount (see the inspector's [c] view)",
         )

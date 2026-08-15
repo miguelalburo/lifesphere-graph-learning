@@ -6,7 +6,7 @@
 It is the hand-driven shell around `subject_subgraph.py`, which is the part
 worth keeping. No tests, no error handling beyond what makes it runnable, and
 nothing here is cached to disk — #11's `data/processed/subject_subgraph/` cache
-belongs to the arm-3 ticket (#12), not to the question of whether the
+belongs to the model-3 ticket (#12), not to the question of whether the
 construction is right.
 
 **The question.** #11 asks whether the schema-faithful rooted subgraph, once
@@ -94,9 +94,9 @@ def load_cohort() -> Cohort:
     samples = read_table("samples", directory=INTERIM_DIR)
     pathology = read_table("pathology_details", directory=INTERIM_DIR)
 
-    # Fit on outer fold 0's training Subjects, the same way arm 2 does — a
+    # Fit on outer fold 0's training Subjects, the same way model 2 does — a
     # contract fitted on the whole cohort would leak, and this prototype is
-    # checking arm-3 features against arm-2 features, so both must be fold 0's.
+    # checking model-3 features against model-2 features, so both must be fold 0's.
     folds = load_folds()
     train = fold_split(folds, 0).train
     contract = fit_feature_contract(assemble_raw_frame(), frozenset(train))
@@ -223,7 +223,7 @@ def pick_cases(cohort: Cohort) -> tuple[list[Case], list[str]]:
 def encoder_probe(data: HeteroData, *, d: int = 8) -> tuple[str, torch.Tensor | None]:
     """Two `HeteroConv` layers over the real graph, returning the root embedding.
 
-    Deliberately the crudest possible stand-in for the arm-3 encoder — untrained,
+    Deliberately the crudest possible stand-in for the model-3 encoder — untrained,
     `SAGEConv`, `d = 8`. It is not measuring anything; it answers one question
     the shape checks cannot, which is whether PyG will actually *run* on an
     empty node store, a zero-edge relation, or a one-column feature matrix.
@@ -367,15 +367,15 @@ def render(cohort: Cohort, cases: list[Case], absent: list[str], state: State) -
             out.append(f"  {t:<16} {len(cols):>3}  {DIM}{shown or '(featureless — 1 constant column)'}{RESET}")
         out.append(f"  {DIM}{'assigned':<16} {total:>3}   contract declares {len(cohort.contract.feature_names)}{RESET}")
         out.append("")
-        out.append(f"{BOLD}what the flattened arm gets for this Subject{RESET}")
+        out.append(f"{BOLD}what the flattened model gets for this Subject{RESET}")
         row = cohort.contract.transform(
             assemble_raw_frame(), frozenset({record.subject_id})
         )
         sample_cols = list(cohort.blocks.sample)
-        out.append(f"  {DIM}Sample block, arm 2:{RESET} " +
+        out.append(f"  {DIM}Sample block, model 2:{RESET} " +
                    "  ".join(f"{c}={row[c].iloc[0]:.3f}" for c in sample_cols))
         graph_mean = data[ss.SAMPLE].x.mean(dim=0) if data[ss.SAMPLE].num_nodes else torch.zeros(len(sample_cols))
-        out.append(f"  {DIM}Sample block, arm 3 (mean over nodes):{RESET} " +
+        out.append(f"  {DIM}Sample block, model 3 (mean over nodes):{RESET} " +
                    "  ".join(f"{c}={v:.3f}" for c, v in zip(sample_cols, graph_mean.tolist())))
         out.append("")
         out.append(f"{BOLD}the Condition node's vocabulary, cohort-wide{RESET}")

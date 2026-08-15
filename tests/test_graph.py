@@ -1,11 +1,11 @@
-"""End-to-end mechanics test for arm 3 (#12).
+"""End-to-end mechanics test for model 3 (#12).
 
 Not a result test — a small, fast, fully synthetic cohort exercising the whole
 two-stage pipeline (`fit_feature_contract` -> construction cache -> collation ->
 encoder training with early stopping -> penalty selection -> shared decoder ->
 `score_fold`) so a wiring bug between any two of those pieces fails here rather
 than an hour into a real 5-fold run. `tests/test_tabular.py` is the same test
-for arm 2, deliberately: the two arms must break in the same places.
+for model 2, deliberately: the two models must break in the same places.
 
 The encoder's own properties get their own class, because three of them are
 architectural commitments rather than incidental — `L` equals the subgraph
@@ -30,7 +30,7 @@ from gl_lifesphere.evaluation.splits import FoldSplit
 from gl_lifesphere.features.contract import fit_feature_contract
 from gl_lifesphere.models import training
 from gl_lifesphere.models.graph import (
-    GraphArmConfig,
+    GraphModelConfig,
     RelationalLayer,
     SubjectSubgraphEncoder,
     run_fold,
@@ -42,12 +42,12 @@ N_PER_STUDY = 20
 
 @pytest.fixture
 def synthetic_cohort() -> tuple[cache.SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]:
-    return fixtures.synthetic_arm_inputs(N_PER_STUDY)
+    return fixtures.synthetic_model_inputs(N_PER_STUDY)
 
 
-def _config(**overrides: object) -> GraphArmConfig:
+def _config(**overrides: object) -> GraphModelConfig:
     defaults: dict[str, object] = {"d": 8, "max_epochs": 15, "patience": 5, "seed": 0}
-    return GraphArmConfig(**{**defaults, **overrides})  # type: ignore[arg-type]
+    return GraphModelConfig(**{**defaults, **overrides})  # type: ignore[arg-type]
 
 
 class TestRunFold:
@@ -74,7 +74,7 @@ class TestRunFold:
     ) -> None:
         """#3 §3 pre-declares two controls as "not as options": a frozen
         randomly-initialised encoder, and the end-to-end score that is a
-        by-product of stage one. Both must run on every fold, in every arm."""
+        by-product of stage one. Both must run on every fold, in every model."""
         records, raw, targets, split = synthetic_cohort
 
         result = run_fold(
@@ -145,7 +145,7 @@ class TestRunFold:
 
 
 class TestRunIdentityIsHonoured:
-    """`experiments/README.md` requires a config to name the arm, construction,
+    """`experiments/README.md` requires a config to name the model, construction,
     endpoint, split and seed, "so a run is only useful if it is pinned down
     enough to line up against the others". Declaring is not honouring: the
     loaders read the frozen cohort and the persisted folds regardless, so
@@ -155,15 +155,15 @@ class TestRunIdentityIsHonoured:
     def test_the_shipped_config_declares_the_run_it_actually_gets(self) -> None:
         from gl_lifesphere.models.graph.__main__ import DEFAULT_CONFIG
 
-        config = GraphArmConfig.from_dict(json.loads(DEFAULT_CONFIG.read_text()))
+        config = GraphModelConfig.from_dict(json.loads(DEFAULT_CONFIG.read_text()))
         training.check_run_identity(
-            arm=config.arm, expected_arm="arm3_graph",
+            model=config.model, expected_model="model3_graph",
             endpoint=config.endpoint, split=config.split,
         )
 
     @pytest.mark.parametrize(
         ("field", "value"),
-        [("endpoint", "PFI"), ("split", "10fold_random_seed7"), ("arm", "arm2_tabular")],
+        [("endpoint", "PFI"), ("split", "10fold_random_seed7"), ("model", "model2_tabular")],
     )
     def test_a_config_declaring_something_else_fails_loudly(
         self, field: str, value: str
@@ -171,7 +171,7 @@ class TestRunIdentityIsHonoured:
         config = _config(**{field: value})
         with pytest.raises(ValueError, match="declares a run it will not get"):
             training.check_run_identity(
-                arm=config.arm, expected_arm="arm3_graph",
+                model=config.model, expected_model="model3_graph",
                 endpoint=config.endpoint, split=config.split,
             )
 

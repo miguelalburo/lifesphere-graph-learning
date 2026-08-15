@@ -1,7 +1,7 @@
 """The differentiable stratified Efron Cox loss (#3 §1, §3).
 
 `torchsurv` is the encoder-training half of the two-library split — it trains
-stage one (here) and `decoder.py` is the identical `lifelines` fit every arm's
+stage one (here) and `decoder.py` is the identical `lifelines` fit every model's
 stage two passes through. Efron ties, Study stratification, full-batch: all
 three are settled, not configurable, because `tests/test_stack.py`'s
 `TestObjectiveAgreement` pins that the two libraries' objectives agree only

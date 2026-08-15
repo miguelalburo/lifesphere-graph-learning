@@ -1,5 +1,5 @@
 """Tests for the shared stratified Cox decoder (#3 §3) and its loss (#3 §1),
-depended on by arm 1 (#9) and arm 2 (#10).
+depended on by model 1 (#9) and model 2 (#10).
 
 `tests/test_stack.py::TestObjectiveAgreement` already pins that `torchsurv`
 and `lifelines` optimise the same stratified Efron objective at the library

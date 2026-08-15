@@ -210,7 +210,7 @@ class TestDiagnosisReduction:
         """One cohort Subject has no Diagnosis at all, so the table is one row short.
 
         Pinned because it dictates the join direction: an inner join onto this
-        table silently drops that Subject, and the three arms would then no
+        table silently drops that Subject, and the three models would then no
         longer train on an identical set — which is the one property the whole
         comparison rests on.
         """

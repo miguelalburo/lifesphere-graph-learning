@@ -1,4 +1,4 @@
-"""Train arm 2 across all 5 folds and write metrics.
+"""Train model 2 across all 5 folds and write metrics.
 
     python -m gl_lifesphere.models.tabular [--config PATH] [--out DIR]
 
@@ -15,14 +15,14 @@ from pathlib import Path
 
 from ...extract.connection import REPO_ROOT
 from ..training import summarise_folds
-from .train import ARM, FoldResult, TabularArmConfig, run_all_folds
+from .train import MODEL, FoldResult, TabularModelConfig, run_all_folds
 
-DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "arm2_tabular.json"
-DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "arm2_tabular"
+DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "model2_tabular.json"
+DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "model2_tabular"
 
 def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> list[FoldResult]:
     payload = json.loads(config_path.read_text())
-    config = TabularArmConfig.from_dict(payload)
+    config = TabularModelConfig.from_dict(payload)
     results = run_all_folds(config)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -32,7 +32,7 @@ def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> lis
         )
 
     summary = {
-        "arm": ARM,
+        "model": MODEL,
         "config": payload,
         "folds": summarise_folds([r.fold_metrics for r in results]),
     }
@@ -42,7 +42,7 @@ def main(config_path: Path = DEFAULT_CONFIG, out_dir: Path = DEFAULT_OUT) -> lis
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train arm 2 (flattened/tabular control) across all 5 folds."
+        description="Train model 2 (flattened/tabular control) across all 5 folds."
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)

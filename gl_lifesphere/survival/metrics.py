@@ -1,12 +1,12 @@
-"""The single scoring entry point every arm is required to call through (#3 §5, §6).
+"""The single scoring entry point every model is required to call through (#3 §5, §6).
 
-Arm code must never call `sksurv` or `lifelines` metrics directly — the sign
+Model code must never call `sksurv` or `lifelines` metrics directly — the sign
 convention (higher risk = higher hazard) and the pair-pooling rule for
 within-Study concordance are both quiet-wrong-answer traps
 (`lifelines.utils.concordance_index` silently returns `1 - C`; averaging
 per-Study C-indices instead of pooling their pair counts silently gives
 TGCT's handful of pairs the same weight as BRCA's thousands), and pinning them
-in one place is what keeps every arm from having to get both right
+in one place is what keeps every model from having to get both right
 independently.
 
 Convention throughout: **higher risk score `r` = higher hazard = shorter
@@ -35,7 +35,7 @@ from sksurv.util import Surv
 # a per-Study metric is fiction (decoder doc §5's at-risk table).
 DEFAULT_HORIZONS_DAYS: tuple[float, ...] = (365.0, 730.0, 1095.0)
 
-# The metric #3 §5 makes this study's headline, named once so the arms, the
+# The metric #3 §5 makes this study's headline, named once so the models, the
 # comparison code and #13's gate cannot disagree about which key that is.
 HEADLINE = "within_study_harrell_c"
 
@@ -269,7 +269,7 @@ def assert_discriminates(
 ) -> float:
     """Raise unless `risk` discriminates better than chance (#3 §6), returning the C it computed.
 
-    Every arm should call this on its own training-fold score. A sign error in
+    Every model should call this on its own training-fold score. A sign error in
     the risk convention does not crash — it silently produces `C = 1 - C`,
     which reads as "a bad model" rather than as the defect it is.
 
@@ -331,7 +331,7 @@ def score_fold(
     survival_probabilities: np.ndarray | None = None,
     horizons: tuple[float, ...] = DEFAULT_HORIZONS_DAYS,
 ) -> FoldMetrics:
-    """The one call an arm's fold-evaluation step makes.
+    """The one call a model's fold-evaluation step makes.
 
     `survival_probabilities` (n_test, len(horizons)) is optional because it
     requires the decoder's Breslow baseline hazard, which not every caller has

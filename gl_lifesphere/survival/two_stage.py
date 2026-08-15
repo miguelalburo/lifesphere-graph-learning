@@ -1,9 +1,9 @@
 """Stage two: freeze the encoder's `z`, select `lambda`, fit the shared decoder, score.
 
-#3 §3 makes the two-stage wiring the primary result for every neural arm — an
+#3 §3 makes the two-stage wiring the primary result for every neural model — an
 encoder trained on the stratified Efron Cox loss, then frozen, then a
 `lifelines.CoxPHFitter(strata=['study'])` refit on its `z`. Stage *one* differs
-between the arms, because that is the representation under test; stage two must
+between the models, because that is the representation under test; stage two must
 not, because a difference there would land in the comparison as if it were a
 structural finding.
 
@@ -51,7 +51,7 @@ def two_stage_score(
 ) -> TwoStageResult:
     """Stage two, given a (frozen, already-embedded) `z`.
 
-    Shared by each arm's primary trained-encoder pass and by #3 §3's
+    Shared by each model's primary trained-encoder pass and by #3 §3's
     random-init-encoder diagnostic — both are "extract `z`, then pass it through
     the identical shared decoder", differing only in where `z` came from.
 
@@ -83,7 +83,7 @@ def two_stage_score(
         penalizer=selection.chosen_penalizer,
     )
 
-    # #3 §6: every arm must self-check its training-fold score before trusting
+    # #3 §6: every model must self-check its training-fold score before trusting
     # the held-out one — a sign-inverted risk silently produces `1 - C`.
     train_risk = decoder.risk_scores(fit, z_trainval, study=trainval_target.study)
     train_harrell_c = (

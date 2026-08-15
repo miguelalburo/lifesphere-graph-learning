@@ -1,6 +1,6 @@
-"""The Cox target every arm trains and is scored against (#3 §1, §2).
+"""The Cox target every model trains and is scored against (#3 §1, §2).
 
-One entry point, `load_survival_frame`, so no arm re-derives the label from
+One entry point, `load_survival_frame`, so no model re-derives the label from
 `data/processed/cohort_os/` by path. `SurvivalTarget` is the plain-array form
 every downstream loss/metric/decoder call takes — `study` is carried as a
 string array here and coded to small integers only where a specific library
@@ -44,7 +44,7 @@ class SurvivalTarget:
 
         A design matrix (`FeatureContract.transform`) and a `SurvivalTarget`
         are built independently and must be zipped by `subjectId`, not by
-        position — this is the one place that alignment happens, so an arm
+        position — this is the one place that alignment happens, so a model
         never re-derives its own subject-order bookkeeping.
         """
         position = {subject: i for i, subject in enumerate(self.subject_id)}

@@ -23,17 +23,17 @@ rather than a label-shuffle control.
   ones included.
 - `within_study` permutes inside each Study, which destroys exactly what the
   headline within-Study Harrell C measures while *preserving* the fact that
-  Studies differ in survival. Arms 2 and 3 carry `Condition` at
+  Studies differ in survival. Models 2 and 3 carry `Condition` at
   R²_study = 0.948, so under this scheme their pooled C is expected to stay
   **above** 0.5 while their within-Study C falls to chance. That is not a
   leak — it is #4 §6's immunity argument made visible, and the direct
   demonstration that the pooled secondaries are partly a Study read-off while
   the headline metric is not.
 
-**Every arm is shuffled, not only arm 3.** §7 frames the control for the
+**Every model is shuffled, not only model 3.** §7 frames the control for the
 encoder, but the leak it is looking for lives in the shared feature export
-(#4), which all three arms consume. Arms 1 and 2 are cheap, and a leak that
-showed in them and not in arm 3 would be missed by a graph-only control.
+(#4), which all three models consume. Models 1 and 2 are cheap, and a leak that
+showed in them and not in model 3 would be missed by a graph-only control.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def permute_targets(targets: SurvivalTarget, *, seed: int, scheme: str = GLOBAL)
     """A new target with `(time, event)` pairs redistributed across Subjects.
 
     `subject_id` and `study` stay exactly where they were, so the result is
-    still keyed the way `SurvivalTarget.reorder` expects and every arm's
+    still keyed the way `SurvivalTarget.reorder` expects and every model's
     Subject bookkeeping is untouched. Only the label moves.
     """
     if scheme not in SCHEMES:
@@ -85,10 +85,10 @@ def permute_targets(targets: SurvivalTarget, *, seed: int, scheme: str = GLOBAL)
 
 
 @dataclass(frozen=True)
-class ArmShuffle:
-    """One arm retrained end-to-end on one permuted label."""
+class ModelShuffle:
+    """One model retrained end-to-end on one permuted label."""
 
-    arm: str
+    model: str
     scheme: str
     seed: int
     fold_metrics: tuple[metrics.FoldMetrics, ...]
@@ -105,7 +105,7 @@ class ArmShuffle:
         within = self.within_study
         pooled = self.pooled
         return {
-            "arm": self.arm,
+            "model": self.model,
             "scheme": self.scheme,
             "seed": self.seed,
             metrics.HEADLINE: {
@@ -124,19 +124,19 @@ class ArmShuffle:
 
 @dataclass(frozen=True)
 class ShuffleResult:
-    runs: tuple[ArmShuffle, ...]
+    runs: tuple[ModelShuffle, ...]
 
-    def run(self, arm: str, scheme: str) -> ArmShuffle:
+    def run(self, model: str, scheme: str) -> ModelShuffle:
         for candidate in self.runs:
-            if candidate.arm == arm and candidate.scheme == scheme:
+            if candidate.model == model and candidate.scheme == scheme:
                 return candidate
-        raise KeyError(f"no shuffle run for arm={arm!r} scheme={scheme!r}")
+        raise KeyError(f"no shuffle run for model={model!r} scheme={scheme!r}")
 
     def to_dict(self) -> dict[str, object]:
         return {
             "diagnostic": "label_shuffle",
             "description": (
-                "Every arm retrained on a label whose (time, event) pairs have been "
+                "Every model retrained on a label whose (time, event) pairs have been "
                 "redistributed across Subjects (encoder doc §7). C should sit at ~0.5; "
                 "meaningfully above means a Survival-derived column reached the feature side."
             ),
@@ -154,19 +154,19 @@ class ShuffleResult:
 
 def run_label_shuffle(
     *,
-    arms: tuple[str, ...] = (baseline_train.ARM, tabular_train.ARM, graph_train.ARM),
+    models: tuple[str, ...] = (baseline_train.MODEL, tabular_train.MODEL, graph_train.MODEL),
     schemes: tuple[str, ...] = SCHEMES,
     seed: int = 0,
-    baseline_config: baseline_train.BaselineArmConfig | None = None,
-    tabular_config: tabular_train.TabularArmConfig | None = None,
-    graph_config: graph_train.GraphArmConfig | None = None,
+    baseline_config: baseline_train.BaselineModelConfig | None = None,
+    tabular_config: tabular_train.TabularModelConfig | None = None,
+    graph_config: graph_train.GraphModelConfig | None = None,
     records: cache.SubjectRecords | None = None,
     raw: pd.DataFrame | None = None,
     targets: SurvivalTarget | None = None,
     folds: pd.DataFrame | None = None,
     use_cache: bool = True,
 ) -> ShuffleResult:
-    """Retrain each requested arm on each permutation scheme, across all 5 folds.
+    """Retrain each requested model on each permutation scheme, across all 5 folds.
 
     Every input is injectable so the whole control can be exercised against a
     synthetic cohort — a shuffle that could only run on the real 6,811 Subjects
@@ -177,57 +177,57 @@ def run_label_shuffle(
     real_targets = targets if targets is not None else load_targets()
     fold_assignment = folds if folds is not None else load_folds()
     subject_records = records
-    if graph_train.ARM in arms and subject_records is None:
+    if graph_train.MODEL in models and subject_records is None:
         subject_records = cache.load_subject_records()
 
-    runs: list[ArmShuffle] = []
+    runs: list[ModelShuffle] = []
     for scheme in schemes:
         permuted = permute_targets(real_targets, seed=seed, scheme=scheme)
-        for arm in arms:
+        for model in models:
             fold_metrics = tuple(
                 _run_one_fold(
-                    arm,
+                    model,
                     outer_fold,
                     raw=raw_frame,
                     targets=permuted,
                     records=subject_records,
                     folds=fold_assignment,
-                    baseline_config=baseline_config or baseline_train.BaselineArmConfig(),
-                    tabular_config=tabular_config or tabular_train.TabularArmConfig(),
-                    graph_config=graph_config or graph_train.GraphArmConfig(),
+                    baseline_config=baseline_config or baseline_train.BaselineModelConfig(),
+                    tabular_config=tabular_config or tabular_train.TabularModelConfig(),
+                    graph_config=graph_config or graph_train.GraphModelConfig(),
                     use_cache=use_cache,
                 )
                 for outer_fold in range(N_SPLITS)
             )
             runs.append(
-                ArmShuffle(arm=arm, scheme=scheme, seed=seed, fold_metrics=fold_metrics)
+                ModelShuffle(model=model, scheme=scheme, seed=seed, fold_metrics=fold_metrics)
             )
     return ShuffleResult(runs=tuple(runs))
 
 
 def _run_one_fold(
-    arm: str,
+    model: str,
     outer_fold: int,
     *,
     raw: pd.DataFrame,
     targets: SurvivalTarget,
     records: cache.SubjectRecords | None,
     folds: pd.DataFrame,
-    baseline_config: baseline_train.BaselineArmConfig,
-    tabular_config: tabular_train.TabularArmConfig,
-    graph_config: graph_train.GraphArmConfig,
+    baseline_config: baseline_train.BaselineModelConfig,
+    tabular_config: tabular_train.TabularModelConfig,
+    graph_config: graph_train.GraphModelConfig,
     use_cache: bool,
 ) -> metrics.FoldMetrics:
-    """Dispatch to the arm's own `run_fold`, with the #3 §6 self-check turned off.
+    """Dispatch to the model's own `run_fold`, with the #3 §6 self-check turned off.
 
-    Each arm is called through its real entry point rather than a
+    Each model is called through its real entry point rather than a
     shuffle-specific copy, so the control exercises the same contract fitting,
     the same encoder, and the same decoder the reported result came from. A
     shuffle that ran through its own reimplementation could not detect a leak
-    that lived in the arm.
+    that lived in the model.
     """
     split = fold_split(folds, outer_fold)
-    if arm == baseline_train.ARM:
+    if model == baseline_train.MODEL:
         return baseline_train.run_fold(
             outer_fold,
             raw=raw,
@@ -236,7 +236,7 @@ def _run_one_fold(
             config=baseline_config,
             expect_discrimination=False,
         ).fold_metrics
-    if arm == tabular_train.ARM:
+    if model == tabular_train.MODEL:
         return tabular_train.run_fold(
             outer_fold,
             raw=raw,
@@ -245,9 +245,9 @@ def _run_one_fold(
             config=tabular_config,
             expect_discrimination=False,
         ).fold_metrics
-    if arm == graph_train.ARM:
+    if model == graph_train.MODEL:
         if records is None:
-            raise ValueError("arm 3's shuffle needs `records`; pass them or let the runner load them")
+            raise ValueError("model 3's shuffle needs `records`; pass them or let the runner load them")
         return graph_train.run_fold(
             outer_fold,
             records=records,
@@ -258,4 +258,4 @@ def _run_one_fold(
             use_cache=use_cache,
             expect_discrimination=False,
         ).fold_metrics
-    raise ValueError(f"unknown arm {arm!r}")
+    raise ValueError(f"unknown model {model!r}")

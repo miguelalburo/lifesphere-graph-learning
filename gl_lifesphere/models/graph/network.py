@@ -109,8 +109,8 @@ class SubjectSubgraphEncoder(nn.Module):
 
     Mirrors `models.tabular.network.TabularEncoder`'s contract exactly —
     `embed()` returns the representation the shared decoder is refit on once
-    frozen, `forward()` returns the scalar risk that trains it — so arm 2 and
-    arm 3 differ in their representation and in nothing else.
+    frozen, `forward()` returns the scalar risk that trains it — so model 2 and
+    model 3 differ in their representation and in nothing else.
 
     `feature_widths` and `edge_types` come from the construction rather than
     from a config: the per-type input widths are the fitted contract's blocks

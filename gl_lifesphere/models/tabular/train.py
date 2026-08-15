@@ -1,9 +1,9 @@
-"""Two-stage training for arm 2, one outer fold at a time (#10, #3 §3, §8).
+"""Two-stage training for model 2, one outer fold at a time (#10, #3 §3, §8).
 
 Stage one trains `TabularEncoder` end-to-end on the stratified Efron Cox loss,
 full-batch, with early stopping on the nested validation fold. Stage two
 freezes the encoder, extracts `z` for train+val and test, and refits the
-identical `lifelines.CoxPHFitter(strata=['study'])` decoder every arm passes
+identical `lifelines.CoxPHFitter(strata=['study'])` decoder every model passes
 through — with `lambda` selected on the same nested slice, per #3 §3.
 
 This module owns the training *mechanics*; `experiments/configs/` owns the
@@ -26,14 +26,14 @@ from .. import training
 from ..training import EncoderFit
 from .network import TabularEncoder
 
-ARM = "arm2_tabular"
+MODEL = "model2_tabular"
 
 
 @dataclass(frozen=True)
-class TabularArmConfig:
+class TabularModelConfig:
     """Every hyperparameter this module needs; everything else is fixed by #3."""
 
-    arm: str = ARM
+    model: str = MODEL
     endpoint: str = training.LOCKED_ENDPOINT
     split: str = field(default_factory=training.locked_split_name)
     hidden_dims: tuple[int, ...] = (32,)
@@ -47,7 +47,7 @@ class TabularArmConfig:
     penalty_grid: tuple[float, ...] = decoder.PENALTY_GRID
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> "TabularArmConfig":
+    def from_dict(cls, payload: dict[str, object]) -> "TabularModelConfig":
         """Ignores keys the dataclass does not declare (e.g. a `_comment`), so a
         documented config file need not be stripped before loading."""
         kwargs = training.config_from_dict(cls, payload)
@@ -68,7 +68,7 @@ def train_encoder(
     x_val: pd.DataFrame,
     val_target: SurvivalTarget,
     *,
-    config: TabularArmConfig,
+    config: TabularModelConfig,
 ) -> EncoderFit[TabularEncoder]:
     """Full-batch Adam on the stratified Efron Cox loss, early-stopped on val loss."""
     return training.train_with_early_stopping(
@@ -84,7 +84,7 @@ def train_encoder(
     )
 
 
-def _new_encoder(input_dim: int, *, config: TabularArmConfig) -> TabularEncoder:
+def _new_encoder(input_dim: int, *, config: TabularModelConfig) -> TabularEncoder:
     """A freshly initialised encoder. Seeding lives here because #3 §3's
     random-init control requires exactly these pre-training weights."""
     torch.manual_seed(config.seed)
@@ -106,7 +106,7 @@ def _embed(model: TabularEncoder, x: pd.DataFrame) -> pd.DataFrame:
 @dataclass(frozen=True)
 class FoldResult:
     fold: int
-    config: TabularArmConfig
+    config: TabularModelConfig
     contract: FeatureContract = field(repr=False)
     encoder_fit: EncoderFit[TabularEncoder] = field(repr=False)
     primary: TwoStageResult
@@ -134,7 +134,7 @@ class FoldResult:
             "final_val_loss": self.encoder_fit.val_loss_curve[-1],
             "metrics": self.primary.fold_metrics.to_dict(),
             "diagnostics": training.diagnostics_to_dict(
-                arm_label="arm 2",
+                model_label="model 2",
                 random_init_penalizer=self.random_init.penalty_selection.chosen_penalizer,
                 random_init=self.random_init.fold_metrics,
                 end_to_end=self.end_to_end,
@@ -155,7 +155,7 @@ def run_fold(
     raw: pd.DataFrame,
     targets: SurvivalTarget,
     split: FoldSplit,
-    config: TabularArmConfig,
+    config: TabularModelConfig,
     expect_discrimination: bool = True,
 ) -> FoldResult:
     """One outer fold, end to end: fit contract -> train encoder -> select lambda -> score.
@@ -193,7 +193,7 @@ def run_fold(
         z_test=z_test,
         test_target=test_target,
         penalty_grid=config.penalty_grid,
-        where=f"arm2 fold {outer_fold} (train+val)",
+        where=f"model2 fold {outer_fold} (train+val)",
         expect_discrimination=expect_discrimination,
     )
 
@@ -206,7 +206,7 @@ def run_fold(
         z_test=_embed(random_model, x_test),
         test_target=test_target,
         penalty_grid=config.penalty_grid,
-        where=f"arm2 fold {outer_fold} (random-init control)",
+        where=f"model2 fold {outer_fold} (random-init control)",
         expect_discrimination=expect_discrimination,
     )
 
@@ -216,7 +216,7 @@ def run_fold(
         trainval_target=trainval_target,
         test_input=_to_tensor(x_test),
         test_target=test_target,
-        where=f"arm2 fold {outer_fold} (end-to-end diagnostic)",
+        where=f"model2 fold {outer_fold} (end-to-end diagnostic)",
         expect_discrimination=expect_discrimination,
     )
 
@@ -232,14 +232,14 @@ def run_fold(
 
 
 def run_all_folds(
-    config: TabularArmConfig,
+    config: TabularModelConfig,
     *,
     raw: pd.DataFrame | None = None,
     targets: SurvivalTarget | None = None,
 ) -> list[FoldResult]:
     """All 5 outer folds of the locked Study-stratified split (#7)."""
     training.check_run_identity(
-        arm=config.arm, expected_arm=ARM, endpoint=config.endpoint, split=config.split
+        model=config.model, expected_model=MODEL, endpoint=config.endpoint, split=config.split
     )
     raw_frame = raw if raw is not None else assemble_raw_frame()
     survival_targets = targets if targets is not None else load_targets()

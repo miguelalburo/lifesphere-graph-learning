@@ -10,7 +10,7 @@ is a dropped node type (#4 §4). Run it once; the counts land in
 `data/interim/diagnostics/` and every later run reads them from there.
 
 Each diagnostic is written as it finishes, and `--only` runs one of them, because
-the shuffle alone is 30 arm-3 training runs and losing a completed ablation to an
+the shuffle alone is 30 model-3 training runs and losing a completed ablation to an
 interruption in it is avoidable. `gate.json` is then assembled from those three
 files — never from the objects a run happens to be holding — so `--only gate`
 re-judges a finished run in a second, and what the gate judges is by
@@ -30,9 +30,9 @@ import pandas as pd
 from ..constructions import cache
 from ..extract.connection import REPO_ROOT
 from ..features import assemble_raw_frame
-from ..models.baseline.train import ARM as BASELINE_ARM
-from ..models.graph.train import ARM as GRAPH_ARM
-from ..models.tabular.train import ARM as TABULAR_ARM
+from ..models.baseline.train import MODEL as BASELINE_MODEL
+from ..models.graph.train import MODEL as GRAPH_MODEL
+from ..models.tabular.train import MODEL as TABULAR_MODEL
 from ..survival import metrics
 from ..survival.targets import load_targets
 from . import recorded
@@ -45,7 +45,7 @@ from .shuffle import run_label_shuffle
 DEFAULT_CONFIG = REPO_ROOT / "experiments" / "configs" / "trust_gate.json"
 DEFAULT_OUT = REPO_ROOT / "results" / "metrics" / "trust_gate"
 
-ARMS = (BASELINE_ARM, TABULAR_ARM, GRAPH_ARM)
+MODELS = (BASELINE_MODEL, TABULAR_MODEL, GRAPH_MODEL)
 METRIC = metrics.HEADLINE
 
 # What `--only` accepts. A module constant because `gate.PRODUCED_BY` suggests
@@ -73,14 +73,14 @@ def main(
     payload = json.loads(config_path.read_text())
     config = GateConfig.from_dict(payload)
     config.check()
-    baseline_config, tabular_config, graph_config = config.arm_configs(config_path.parent)
+    baseline_config, tabular_config, graph_config = config.model_configs(config_path.parent)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if pull_counts:
         pull_intervention_counts()
 
     targets = load_targets()
-    # Loaded once and shared, because the shuffle retrains all three arms across
+    # Loaded once and shared, because the shuffle retrains all three models across
     # two schemes and re-reading the interim tables per run would dominate its
     # cost — but loaded lazily, because the degree probe needs neither and
     # `--only degree-probe` should not pay for a construction it never opens.
@@ -131,8 +131,8 @@ def main(
     report = assess(
         GateInputs.from_files(
             out_dir,
-            arm_means={
-                arm: float(np.mean(recorded.load_arm(arm).metric(METRIC))) for arm in ARMS
+            model_means={
+                model: float(np.mean(recorded.load_model(model).metric(METRIC))) for model in MODELS
             },
         ),
         config,

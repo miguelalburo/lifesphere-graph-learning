@@ -9,7 +9,7 @@ and safe to build once and reuse across all five folds.
 Joins **from the cohort roster** (`members`), never inner-joined onto
 `diagnosis_primary` — one cohort Subject has no Diagnosis at all, and an
 inner join would silently drop them and desynchronise the Subject set every
-arm is required to share (`cast.reduce_diagnoses`'s docstring).
+model is required to share (`cast.reduce_diagnoses`'s docstring).
 """
 
 from __future__ import annotations

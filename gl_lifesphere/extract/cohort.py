@@ -6,9 +6,9 @@ would split the rule across two languages and put its numeric predicate
 (`timeToEventDays > 0`) on the far side of a cast this package exists to make
 explicit.
 
-Freezing matters because all three arms must train on an identical Subject set
+Freezing matters because all three models must train on an identical Subject set
 for any difference between them to be attributable to the representation. A
-cohort re-queried per experiment is a cohort that can drift between arms.
+cohort re-queried per experiment is a cohort that can drift between models.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def select_os_cohort(survival: pd.DataFrame) -> pd.DataFrame:
     Three conditions, in the order they were settled:
 
     1. **Study is one of the pinned 20** — the Studies where AJCC pathologic
-       staging is present. Admitting the other 13 would hand every arm a
+       staging is present. Admitting the other 13 would hand every model a
        near-perfect cancer-type proxy through "stage unknown" (#1).
     2. **The record is the OS endpoint.** Exactly one OS record exists per
        Subject, so no de-duplication rule is needed (#3 §2).
@@ -119,10 +119,10 @@ def freeze(
 
     - `labels` — Subject, Study, duration, event. The Cox target and the split
       key, and the only place `:Survival` is permitted to appear.
-    - `members` — Subject and Study alone, the roster every arm joins against.
+    - `members` — Subject and Study alone, the roster every model joins against.
 
     Nothing feature-shaped is written here. Keeping the label table physically
-    apart from anything an arm builds a design matrix from is what makes
+    apart from anything a model builds a design matrix from is what makes
     `guards.check_no_survival_columns` an enforceable rule rather than a
     convention.
     """

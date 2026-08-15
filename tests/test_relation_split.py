@@ -1,11 +1,11 @@
-"""#15's follow-up probe: is arm 3's margin the secondary-diagnosis channel?
+"""#15's follow-up probe: is model 3's margin the secondary-diagnosis channel?
 
-#13's degree probe found a channel arm 3 uniquely holds. #11 split
+#13's degree probe found a channel model 3 uniquely holds. #11 split
 `HAS_DIAGNOSIS` on `isPrimaryDiagnosis`, and a bias-free convolution over an
 empty relation contributes exactly `0` while a non-empty one does not — so
 "this Subject has at least one secondary Diagnosis" is structurally visible to
 the encoder, a 1-bit read on `n_diagnoses > 1` worth within-Study C = 0.5588 on
-its own. This probe collapses the split and re-runs arm 3 against it.
+its own. This probe collapses the split and re-runs model 3 against it.
 
 Three properties carry the weight, and two of them are the probe's own honesty
 rather than its arithmetic:
@@ -42,23 +42,23 @@ from gl_lifesphere.constructions.subject_subgraph import (
     HAS_SECONDARY_DIAGNOSIS,
 )
 from gl_lifesphere.diagnostics import gate, relation_split
-from gl_lifesphere.diagnostics.recorded import RecordedArm, comparable_fields
+from gl_lifesphere.diagnostics.recorded import RecordedModel, comparable_fields
 from gl_lifesphere.evaluation.splits import FoldSplit, N_SPLITS
 from gl_lifesphere.features.contract import fit_feature_contract
-from gl_lifesphere.models.graph import GraphArmConfig
+from gl_lifesphere.models.graph import GraphModelConfig
 from gl_lifesphere.survival.targets import SurvivalTarget
 
-ArmInputs = tuple[cache.SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]
+ModelInputs = tuple[cache.SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]
 
 
 @pytest.fixture
-def synthetic_cohort() -> ArmInputs:
-    return fixtures.synthetic_arm_inputs(20)
+def synthetic_cohort() -> ModelInputs:
+    return fixtures.synthetic_model_inputs(20)
 
 
 @pytest.fixture
 def both_constructions(
-    synthetic_cohort: ArmInputs,
+    synthetic_cohort: ModelInputs,
 ) -> tuple[cache.SubgraphSet, cache.SubgraphSet]:
     """The same Subjects and the same fitted contract, split and collapsed.
 
@@ -125,7 +125,7 @@ class TestWhatCollapsingChanges:
         What survives is a strictly smaller bit: a Subject with **no** Diagnosis
         still has an empty relation. That is not the channel #13 measured — the
         frozen cohort holds exactly one such Subject in 6,811 (#4 §8, which is
-        why every arm left-joins from the `members` roster), and one Subject
+        why every model left-joins from the `members` roster), and one Subject
         carries no prognostic weight. Pinned here so the distinction is a test
         rather than an assumption.
         """
@@ -171,9 +171,9 @@ class TestWhatCollapsingChanges:
 # ---------------------------------------------------------------------------
 
 
-def _recorded(arm: str, per_fold: list[float], config: dict[str, object]) -> RecordedArm:
-    return RecordedArm(
-        arm=arm,
+def _recorded(model: str, per_fold: list[float], config: dict[str, object]) -> RecordedModel:
+    return RecordedModel(
+        model=model,
         folds=tuple(
             {"fold": i, "metrics": {relation_split.METRIC: value}}
             for i, value in enumerate(per_fold)
@@ -183,8 +183,8 @@ def _recorded(arm: str, per_fold: list[float], config: dict[str, object]) -> Rec
 
 
 class TestComparabilityGuard:
-    def test_the_probe_config_is_arm_3_with_only_the_split_flag_flipped(self) -> None:
-        graph_config = GraphArmConfig(d=8)
+    def test_the_probe_config_is_model_3_with_only_the_split_flag_flipped(self) -> None:
+        graph_config = GraphModelConfig(d=8)
 
         probe = relation_split.probe_config(graph_config)
 
@@ -197,47 +197,47 @@ class TestComparabilityGuard:
         }
         assert varied == {"split_primary_relation"}
 
-    def test_a_recorded_arm_3_trained_at_a_different_width_is_refused(self) -> None:
+    def test_a_recorded_model_3_trained_at_a_different_width_is_refused(self) -> None:
         """A silent second difference is the failure this guard exists for: the
         probe would produce a plausible number attributing a width change to the
         relation split."""
-        graph_config = GraphArmConfig(d=8)
-        arm3 = _recorded("arm3_graph", [0.68] * N_SPLITS, {**comparable_fields(graph_config), "d": 32})
+        graph_config = GraphModelConfig(d=8)
+        model3 = _recorded("model3_graph", [0.68] * N_SPLITS, {**comparable_fields(graph_config), "d": 32})
 
         with pytest.raises(ValueError, match="split_primary_relation"):
-            relation_split.check_probe_comparable(arm3, graph_config)
+            relation_split.check_probe_comparable(model3, graph_config)
 
-    def test_a_probe_config_declaring_a_seed_the_arm_does_not_supply_is_refused(self) -> None:
+    def test_a_probe_config_declaring_a_seed_the_model_does_not_supply_is_refused(self) -> None:
         """`seed` and `construction` are declared in the probe's config but
-        *supplied* by arm 3's, so a probe file naming seed 1 against an arm run
+        *supplied* by model 3's, so a probe file naming seed 1 against a model run
         at seed 0 would file one run's numbers under another's label —
         `tests/README.md`'s quiet-wrong-answer class."""
         config = relation_split.RelationSplitConfig(seed=1)
 
         with pytest.raises(ValueError, match="seed"):
-            config.check_against(GraphArmConfig(seed=0))
+            config.check_against(GraphModelConfig(seed=0))
 
-    def test_a_probe_config_declaring_the_wrong_arm_is_refused(self) -> None:
+    def test_a_probe_config_declaring_the_wrong_model_is_refused(self) -> None:
         """Delegated to `training.check_run_identity` rather than re-implemented,
         so there is one place this rule lives rather than three."""
-        config = relation_split.RelationSplitConfig(arm="arm2_tabular")
+        config = relation_split.RelationSplitConfig(model="model2_tabular")
 
-        with pytest.raises(ValueError, match="arm"):
-            config.check_against(GraphArmConfig())
+        with pytest.raises(ValueError, match="model"):
+            config.check_against(GraphModelConfig())
 
-    def test_the_comparison_arm_must_be_scored_on_the_same_endpoint_and_split(self) -> None:
-        """Arm 2 and arm 3 are different model classes, so field-by-field
+    def test_the_comparison_model_must_be_scored_on_the_same_endpoint_and_split(self) -> None:
+        """Model 2 and model 3 are different model classes, so field-by-field
         comparison is meaningless — but pairing their folds is only meaningful
         on one endpoint and one split, and that much is checkable."""
-        graph_config = GraphArmConfig(d=8)
-        arm2 = _recorded(
-            "arm2_tabular",
+        graph_config = GraphModelConfig(d=8)
+        model2 = _recorded(
+            "model2_tabular",
             [0.65] * N_SPLITS,
-            {"arm": "arm2_tabular", "endpoint": "PFI", "split": graph_config.split},
+            {"model": "model2_tabular", "endpoint": "PFI", "split": graph_config.split},
         )
 
         with pytest.raises(ValueError, match="endpoint"):
-            relation_split.check_comparison_arm(arm2, graph_config)
+            relation_split.check_comparison_model(model2, graph_config)
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +361,7 @@ class TestResultFile:
         """
         result = relation_split.RelationSplitResult(
             attribution=_assess([0.68] * 5, [0.66] * 5, [0.65] * 5),
-            unsplit_config=relation_split.probe_config(GraphArmConfig(d=8)),
+            unsplit_config=relation_split.probe_config(GraphModelConfig(d=8)),
             split_parameters=(25984,) * 5,
             unsplit_parameters=(21888,) * 5,
         )
@@ -423,7 +423,7 @@ class TestNotAGateItem:
         # Present in the directory and still not a substitute for anything the
         # gate needs: assembling it demands the three diagnostics as before.
         with pytest.raises(FileNotFoundError, match="structure_ablation.json"):
-            gate.GateInputs.from_files(tmp_path, arm_means={})
+            gate.GateInputs.from_files(tmp_path, model_means={})
 
     def test_its_verdict_vocabulary_is_not_the_gates(self) -> None:
         """PASS/FAIL would invite a reader to add this to the gate's tally. This

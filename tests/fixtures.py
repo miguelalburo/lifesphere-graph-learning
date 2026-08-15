@@ -23,7 +23,7 @@ import pandas as pd
 
 if TYPE_CHECKING:
     # Imported for annotations only: this module is loaded by every test file,
-    # and the arm packages pull in torch/lifelines at import time.
+    # and the model packages pull in torch/lifelines at import time.
     from gl_lifesphere.constructions.cache import SubjectRecords
     from gl_lifesphere.evaluation.splits import FoldSplit
     from gl_lifesphere.survival.targets import SurvivalTarget
@@ -441,14 +441,14 @@ def synthetic_survival(interim: dict[str, pd.DataFrame], *, seed: int = 0) -> pd
     )
 
 
-def synthetic_arm_inputs(
+def synthetic_model_inputs(
     n_per_study: int = 20,
 ) -> "tuple[SubjectRecords, pd.DataFrame, SurvivalTarget, FoldSplit]":
-    """`(records, raw, targets, split)` — everything an arm's `run_fold` needs.
+    """`(records, raw, targets, split)` — everything a model's `run_fold` needs.
 
     Shared by `test_graph.py` and `test_diagnostics.py` rather than built twice.
     #13's controls are only meaningful if they run against the same inputs the
-    arm does, and two fixtures that were supposed to agree and drifted would
+    model does, and two fixtures that were supposed to agree and drifted would
     make a diagnostic pass or fail for reasons that have nothing to do with the
     thing it tests.
 

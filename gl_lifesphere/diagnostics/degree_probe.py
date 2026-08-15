@@ -7,14 +7,14 @@ model with access to those counts — including the encoder via its
 neighbourhoods — is partly measuring it. This probe's C-index is the floor a
 structural result has to clear to be interesting."
 
-Everything downstream of the design matrix is the arms' own machinery: the same
+Everything downstream of the design matrix is the models' own machinery: the same
 `decoder.select_penalty`, the same `CoxPHFitter(strata=['study'])`, the same
 `metrics.score_fold`, the same persisted folds. Only the covariates differ,
-which is what makes the probe's C directly comparable to an arm's.
+which is what makes the probe's C directly comparable to a model's.
 
-**Two things this arm-shaped code deliberately does not do.**
+**Two things this model-shaped code deliberately does not do.**
 
-It never calls `metrics.assert_discriminates`. Every arm self-checks that its
+It never calls `metrics.assert_discriminates`. Every model self-checks that its
 training-fold risk beats chance (#3 §5, §6), because a sign-inverted score
 silently returns `1 - C`. This model is *designed* to fail that check — a probe
 that came out weak would crash the run — so the training-fold C is recorded as
@@ -23,7 +23,7 @@ learned representation, so there is no sign to invert.
 
 And it fits no feature contract. The counts are not features and must never
 become them; `counts.py` explains the three separate mechanisms that keep the
-table out of the arms, of which `guards.IMMORTAL_TIME_DERIVED` naming
+table out of the models, of which `guards.IMMORTAL_TIME_DERIVED` naming
 `nInterventions` is the last line.
 
 **The coefficients are the diagnosis, not the C-index.** A weak overall C with a
@@ -86,10 +86,10 @@ def subset_grid(columns: tuple[str, ...] = PROBE_COLUMNS) -> dict[str, tuple[str
             grid[f"without:{column}"] = tuple(c for c in columns if c != column)
     # Deliberately outside `ALL`: this is not one of §7's three covariates, so
     # it must not move the headline number. It is here because it is the one
-    # accrual channel an arm can actually see (`counts.SECONDARY_DIAGNOSIS`),
-    # which is what decides whether a strong probe implicates arm 3 or merely
+    # accrual channel a model can actually see (`counts.SECONDARY_DIAGNOSIS`),
+    # which is what decides whether a strong probe implicates model 3 or merely
     # sets a floor.
-    grid[f"arm3_visible:{SECONDARY_DIAGNOSIS}"] = (SECONDARY_DIAGNOSIS,)
+    grid[f"model3_visible:{SECONDARY_DIAGNOSIS}"] = (SECONDARY_DIAGNOSIS,)
     return grid
 
 
@@ -118,8 +118,8 @@ class DegreeProbeResult:
             "description": (
                 "Stratified penalised Cox on log(1+n_samples), log(1+n_diagnoses), "
                 "log(1+n_interventions) and nothing else (encoder doc §7). Same folds, same "
-                "decoder, same metrics as every arm; the counts are a control's input and are "
-                "excluded from every arm's features by #4 §4."
+                "decoder, same metrics as every model; the counts are a control's input and are "
+                "excluded from every model's features by #4 §4."
             ),
             "covariates": list(PROBE_COLUMNS),
             "metric": metrics.HEADLINE,
@@ -161,8 +161,8 @@ def run_fold(
 ) -> ProbeFold:
     """One outer fold: select lambda on the nested slice, fit, score the held-out fold.
 
-    Structured exactly like arm 1's `run_fold` (`models/baseline/train.py`), and
-    for the same reason: the probe's number is only a floor for an arm's number
+    Structured exactly like model 1's `run_fold` (`models/baseline/train.py`), and
+    for the same reason: the probe's number is only a floor for a model's number
     if it was produced by the same protocol.
     """
     x_train = counts.design(split.train, columns)

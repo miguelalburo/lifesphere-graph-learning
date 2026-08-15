@@ -33,8 +33,8 @@ def build_interim(*, raw: Path | None = None, destination: Path | None = None) -
     """Cast every raw table and write the typed frames to `data/interim/`.
 
     Also writes `diagnosis_primary`, the one-row-per-Subject reduction of #4 §1,
-    because every arm needs it and re-deriving the fallback rule per arm is how
-    two arms end up with different stage columns.
+    because every model needs it and re-deriving the fallback rule per model is how
+    two models end up with different stage columns.
     """
     source = raw if raw is not None else RAW_DIR
     target = destination if destination is not None else INTERIM_DIR
@@ -82,7 +82,7 @@ def run(
 def load_cohort_labels() -> pd.DataFrame:
     """Read the frozen label table back.
 
-    The single entry point arms use to get the Cox target, so no arm reaches
-    into `data/processed/` by path and no arm re-derives eligibility.
+    The single entry point models use to get the Cox target, so no model reaches
+    into `data/processed/` by path and no model re-derives eligibility.
     """
     return read_table("labels", directory=PROCESSED_DIR / "cohort_os")

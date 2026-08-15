@@ -270,7 +270,7 @@ def reduce_diagnoses(diagnoses: pd.DataFrame) -> pd.DataFrame:
 
     That asymmetry is deliberate rather than papered over with an empty row: a
     Subject with no Diagnosis is a different thing from one whose fields are all
-    null, and only the join makes it visible. **Arms must left-join from the
+    null, and only the join makes it visible. **Models must left-join from the
     cohort roster (`members`), never inner-join onto this table**, or they
     silently drop a Subject and no longer train on an identical set. Imputing
     the resulting nulls is the feature layer's job, since the rule is

@@ -1,7 +1,7 @@
-"""Feature encoding shared across all three arms.
+"""Feature encoding shared across all three models.
 
 Kept separate from `constructions` and `models` on purpose: the study's claim is
-about *structure*, so the graph arm and the flattened/tabular arm must draw on
+about *structure*, so the graph model and the flattened/tabular model must draw on
 the same encoded features. Anything that differs between them should be a
 deliberate structural difference, not an incidental encoding one.
 

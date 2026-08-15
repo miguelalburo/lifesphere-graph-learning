@@ -7,7 +7,7 @@ redistribute LifeSphere's underlying data. Only this README is tracked.
 | ------------ | --------------------------------------------------------------------- |
 | `raw/`       | Verbatim pulls from Neo4j, unmodified (strings still strings).         |
 | `interim/`   | Typed and joined frames — casts applied, missingness made explicit.    |
-| `processed/` | Model-ready artefacts, one subdirectory per graph construction or arm. |
+| `processed/` | Model-ready artefacts, one subdirectory per graph construction or model. |
 
 Everything here is reproducible from the live graph via `gl_lifesphere.extract`;
 nothing here is a source of truth.
